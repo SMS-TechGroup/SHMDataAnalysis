@@ -52,6 +52,26 @@ string orgTB = "SMS";
 string bucketTB = "SMS_Data";
 string sensorsTB = "";
 
+
+string Location1 = "L1-LG,L1-DG,L1-TG,L1-SG-1,L1-SG-2,L1-SG-3,L1-SG-4,L1-SG-5";
+string Location1SG = "L1-SG-1,L1-SG-2,L1-SG-3,L1-SG-4,L1-SG-5";
+string Location2 = "L2-LG,L2-DG,L2-TG,L2-SG-1,L2-SG-2,L2-SG-3,L2-SG-4,L2-SG-5";
+string Location2SG = "L2-SG-1,L2-SG-2,L2-SG-3,L2-SG-4,L2-SG-5";
+string Location3 = "L3-LG,L3-DG,L3-TG,L3-SG-1,L3-SG-2,L3-SG-3,L3-SG-4,L3-SG-5";
+string Location3SG = "L3-SG-1,L3-SG-2,L3-SG-3,L3-SG-4,L3-SG-5";
+string Location4 = "L4-LG,L4-DG,L4-TG,L4-SG-1,L4-SG-2,L4-SG-3,L4-SG-4,L4-SG-5";
+string Location4SG = "L4-SG-1,L4-SG-2,L4-SG-3,L4-SG-4,L4-SG-5";
+string Location5 = "L5-LG,L5-DG,L5-TG,L5-SG-1,L5-SG-2,L5-SG-3,L5-SG-4,L5-SG-5";
+string Location5SG = "L5-SG-1,L5-SG-2,L5-SG-3,L5-SG-4,L5-SG-5";
+string Location6 = "L6-LG,L6-DG,L6-TG,L6-SG-1,L6-SG-2,L6-SG-3,L6-SG-4,L6-SG-5";
+string Location6SG = "L6-SG-1,L6-SG-2,L6-SG-3,L6-SG-4,L6-SG-5";
+
+string Rosette1 = "R1-1A,R1-1B,R1-1C,R1-2A,R1-2B,R1-2C,R1-3A,R1-3B,R1-3C,R1-4A,R1-4B,R1-4C,R1-5A,R1-5B,R1-5C,R1-1-VM_ES,R1-2-VM_ES,R1-3-VM_ES,R1-4-VM_ES,R1-5-VM_ES,R1_AVG";
+string Rosette2 = "R2-1A,R2-1B,R2-1C,R2-2A,R2-2B,R2-2C,R2-3A,R2-3B,R2-3C,R2-4A,R2-4B,R2-4C,R2-5A,R2-5B,R2-5C,R2-1-VM_ES,R2-2-VM_ES,R2-3-VM_ES,R2-4-VM_ES,R2-5-VM_ES,R2_AVG";
+string Rosette3 = "R3-1A,R3-1B,R3-1C,R3-2A,R3-2B,R3-2C,R3-3A,R3-3B,R3-3C,R3-4A,R3-4B,R3-4C,R3-5A,R3-5B,R3-5C,R3-1-VM_ES,R3-2-VM_ES,R3-3-VM_ES,R3-4-VM_ES,R3-5-VM_ES,R3_AVG";
+
+string Calcuations = "Peri-SG1,Peri-SG2,Peri-SG3,Peri-SG4,Peri-SG5,Peri-SG6,SN-SG1,SN-SG2,SN-SG3,SN-SG4,SN-SG5,SN-SG6,Snd1,Snd2,Snd3,Snd4,Snd5,Snd6,loc1,loc2,loc3";
+
 DateTime EpochToTimestamp (double epochTimestamp)
 {
     DateTime dateTime = new DateTime(1970, 1, 1, 0, 0, 0,0, DateTimeKind.Utc).AddMilliseconds(epochTimestamp);
@@ -59,47 +79,55 @@ DateTime EpochToTimestamp (double epochTimestamp)
     return dateTime;
 }
 
-List<double> findTurningPoints(List<double> data)
+List<StrainData> findTurningPoints(List<StrainData> data)
 {
-    for (int i=1; i < data.Count()-1;i++)
+    foreach (StrainData sd in data)
     {
-        if (!(data.ElementAt(i - 1) < data.ElementAt(i) && data.ElementAt(i + 1) < data.ElementAt(i)) ||
-            !(data.ElementAt(i - 1) > data.ElementAt(i) && data.ElementAt(i + 1) > data.ElementAt(i)))
+        for (int i = 1; i < data.Count() - 1; i++)
         {
-            data.RemoveAt(i);
+            if (!(sd.strain[i - 1] < sd.strain[i] && sd.strain[i + 1] < sd.strain[i]) ||
+                !(sd.strain[i - 1] > sd.strain[i] && sd.strain[i + 1] > sd.strain[i]))
+            {
+                sd.strain.RemoveAt(i); sd.time.RemoveAt(i);
+            }
         }
     }
 
     return data;
 }
 
-List<double> removeDuplicates(List<Matrix<double>> data, int row)
+List<StrainData> removeDuplicates(List<StrainData> data)
 {
-    List<double> dataOut = new List<double>();
 
-    for (int num = 0; num < data.Count()-1; num++)
-    if (data.ElementAt(num)[row,0] != data.ElementAt(num + 1)[row,0])
+    foreach (StrainData sd in data)
     {
-            dataOut.Add(data.ElementAt(num)[row, 0]);
+        for (int num = 0; num < data.Count() - 1; num++)
+        {
+            if (sd.strain[num] != sd.strain[num + 1])
+            {
+                sd.strain.RemoveAt(num); sd.time.RemoveAt(num);
+            }
+        }
     }
 
-    return dataOut;
+    return data;
 }
 
-LoadAndCycle LoadAndCycleCount(List<double> data)
+List<LoadAndCycle> LoadAndCycleCount(List<StrainData> data)
 {
 
-    LoadAndCycle Load;
+    LoadAndCycle Load = new LoadAndCycle();
+    List<LoadAndCycle> LocationLoads = new List<LoadAndCycle>(); ;
 
     Load.CycleRange = new List<double>();
-    Load.CycleCount = 0;
+    Load.CycleCount = new int();
 
-    Matrix<double> PlotMatrix = DenseMatrix.Create(1,data.Count(),0);
+    /*Matrix<double> PlotMatrix = DenseMatrix.Create(1,data.Count(),0);
 
     for(int i =0;i<data.Count();i++)
     {
         PlotMatrix[0, i] = data.ElementAt(i);
-    }
+    }*/
 
     //PlotData(PlotMatrix, "Pre-count plot");
 
@@ -107,379 +135,105 @@ LoadAndCycle LoadAndCycleCount(List<double> data)
 
     int j = 0;
 
-    while (true)
+    foreach (StrainData sd in data)
     {
-        try
+        Load.Name = sd.name;
+
+        while (true)
         {
-
-            if ((data.Count <= 3) || ((j + 2) >= data.Count))
+            try
             {
-                Load.CycleRange.Add(Math.Abs(data.ElementAt(0) - data[data.Count() - 1]));
-                break;
-            }
 
-            if (Math.Abs(data.ElementAt(j + 2) - data.ElementAt(j + 1)) >= Math.Abs(data.ElementAt(j) - data.ElementAt(j + 1)))
-            {
-                Load.CycleRange.Add(Math.Abs(data.ElementAt(j + 1) - data.ElementAt(j)));
-                data.RemoveAt(j + 1);
-                data.RemoveAt(j);
-
-                Load.CycleCount += 1;
-
-                if (j - 2 < 0)
+                if ((sd.strain.Count <= 3) || ((j + 2) >= sd.strain.Count))
                 {
-                    j = 0;
+                    Load.CycleRange.Add(Math.Abs(sd.strain[0] - sd.strain[sd.strain.Count() - 1]));
+                    break;
+                }
+
+                if (Math.Abs(sd.strain[j + 2] - sd.strain[j + 1]) >= Math.Abs(sd.strain[j] - sd.strain[j + 1]))
+                {
+                    Load.CycleRange.Add(Math.Abs(sd.strain[j + 1] - sd.strain[j]));
+                    sd.strain.RemoveAt(j + 1);
+                    sd.strain.RemoveAt(j);
+
+                    Load.CycleCount += 1;
+
+                    if (j - 2 < 0)
+                    {
+                        j = 0;
+                    }
+                    else
+                    {
+                        j = j - 2;
+                    }
                 }
                 else
                 {
-                    j = j - 2;
+                    j++;
                 }
+
             }
-            else
+            catch (Exception ex)
             {
-                j++;
+                Console.WriteLine("Rainflow error" + ex.Message + " " + ex.StackTrace);
+                Console.WriteLine("Counts" + j + " Array Count" + Load.CycleRange.Count());
+                break;
             }
 
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Rainflow error" + ex.Message + " " + ex.StackTrace);
-            Console.WriteLine("Counts" + j + " Array Count" + Load.CycleRange.Count());
-            break;
-        }
+
+        LocationLoads.Add(Load);
 
     }
 
-    return Load;
+    return LocationLoads;
 
 }
 
-List<double> AbsoluteRearrange(List<double> data)
+List<StrainData> AbsoluteRearrange(List<StrainData> data)
 {
-    double abs = 0.0;
+    //double abs = 0.0;
     int cutpoint = 0;
     List<double> cut = new List<double>();
     List<double> join = new List<double>();
 
-    if (Math.Abs(data.Max()) > Math.Abs(data.Min()))
+    foreach (StrainData sd in data)
     {
-        abs = Math.Abs(data.Max());
-        cutpoint = data.IndexOf(data.Max());
-    }
-    else
-    {
-        abs = Math.Abs(data.Min());
-        cutpoint = data.IndexOf(data.Min());
-    }
-
-    //slice and rearrange the list
-    for (int i = 0; i < cutpoint + 1; i++)
-    {
-        cut.Add(data.ElementAt(i));
-    }
-    for (int i = cutpoint; i < data.Count(); i++)
-    {
-        join.Add(data.ElementAt(i));
-    }
-    join.AddRange(cut);
-
-    return join;
-}
-
-double FindFirstTimestamp(IEnumerable<string> filename)
-{
-    for (int i = 0; i < filename.Count(); i++)
-    {
-        string testElement = filename.ElementAt(i).Split(',')[0];
-
-        bool digitCheck = (testElement.All(char.IsDigit));
-        double numOut;
-        if (digitCheck)
+        if (Math.Abs(sd.strain.Max()) > Math.Abs(sd.strain.Min()))
         {
-            //Console.WriteLine(testElement + " is numeric");
-            double.TryParse(testElement, out numOut); ;
-            return numOut;
-        }
-    }
-    return 0;
-}
-
-string FindMasterFile(DateTime targetDate, IEnumerable<FileInfo> folderFiles)
-{
-    //find the master file for a single day
-
-    string masterFormat = String.Format("compiledData{0}.csv",targetDate.ToString("ddMMyy"));
-    string masterFormatPath = Directory.GetParent(folderFiles.ElementAt(0).FullName) + "\\" + masterFormat;
-    foreach (FileInfo file in folderFiles)
-    {
-        if (file.Name.Contains(masterFormat))
-        {
-            Console.WriteLine(masterFormat + " file found in directory");
-            return masterFormatPath;
-        }
-    }
-
-    double firstTime = FindFirstTimestamp(System.IO.File.ReadLines(masterFormatPath));
-    DateTime dt = EpochToTimestamp(firstTime);
-
-    Console.WriteLine(masterFormat + " not found, creating at " + masterFormatPath);
-    System.IO.File.Create(masterFormatPath);
-    //Thread.Sleep(50);
-    return masterFormatPath;
-}
-
-SortedList<int, string> getSensorsAndIndices(FileInfo dataFile)
-{
-    SortedList<int, string> indexSensor = new SortedList<int, string>();
-
-    IEnumerable<string> rFile = System.IO.File.ReadLines(dataFile.FullName);
-
-    if (rFile.Count() == 0) { return indexSensor; }
-
-    int counter = 0;
-
-    //indexSensor.Add(, rFile.Where(rFile => rFile.Contains("Sensor Name")));
-
-
-
-    foreach (string line in rFile)
-    {      
-
-        if (line.Contains("Sensor Name"))
-        {
-            indexSensor.Add(counter, line.Split(":")[1]);
-        }
-
-        counter++;
-    }
-
-
-    //Console.WriteLine(indexSensor.ElementAt(0));
-
-    return indexSensor;
-}
-static void PrintDataTable(DataTable table)
-{
-    foreach (DataColumn column in table.Columns)
-    {
-        Console.Write($"{column.ColumnName}\t");
-    }
-    Console.WriteLine();
-
-    foreach (DataRow row in table.Rows)
-    {
-        foreach (var item in row.ItemArray)
-        {
-            Console.Write($"{item}\t");
-        }
-        Console.WriteLine();
-    }
-}
-
-
-int WriteSensorFile(FileInfo dataFile, SortedList<int, string> sIndex)
-{
-    
-    IEnumerable<string> rFile = System.IO.File.ReadLines(dataFile.FullName);
-
-    //Find the first instance of the repeat of the sensor count
-    int sensorCount = 1;
-
-    string firstSensor = sIndex.ElementAt(0).Value;
-
-    for (int i = 1; i <= sIndex.Count() / 2; i++)
-    {
-        string item = sIndex.ElementAt(i).Value;
-        if (item == firstSensor)
-        {
-            break;
+            //abs = Math.Abs(sd.strain.Max());
+            cutpoint = sd.strain.IndexOf(sd.strain.Max());
         }
         else
         {
-            //count the header twice to account for splitting the time and the data
-            sensorCount++;
+            //abs = Math.Abs(sd.strain.Min());
+            cutpoint = sd.strain.IndexOf(sd.strain.Min());
         }
+
+        //slice and rearrange the list
+        for (int i = 0; i < cutpoint + 1; i++)
+        {
+            cut.Add(sd.strain[i]);
+        }
+        for (int i = cutpoint; i < sd.strain.Count(); i++)
+        {
+            join.Add(sd.strain[i]);
+        }
+        join.AddRange(cut);
+
+        sd.strain.RemoveRange(0, sd.strain.Count());
+        sd.strain.AddRange(join);
+
+        cut.Clear();
+        join.Clear();
+
 
     }
 
-    int columnCount = 0;
-    int skipCount = 0;
 
-    for (int z = 0; z <= sensorCount; z++)
-    {
-        Console.Write("\rProcessed " + z + " of " + sensorCount + " sensor records. Skipped " + skipCount + " of " + sensorCount + " sensor records.");
-        var firstFrog = sIndex.Where(pair => pair.Value == sIndex.ElementAt(z).Value)
-                    .Select(pair => pair.Key);
-
-        var secondFrog = sIndex.Where(pair => pair.Value == sIndex.ElementAt(z + 1).Value)
-                    .Select(pair => pair.Key);
-
-        //foreach (var item in firstFrog) { Console.WriteLine(item); }
-        //foreach (var item in secondFrog) { Console.WriteLine(item); }
-
-        List<string> strings = new List<string>();
-
-        string sensorName = rFile.ElementAt(firstFrog.ElementAt(0)).Split(':')[1];
-        
-        /*if (sensorName.Contains("pery") || sensorName.Contains("wave"))
-        {
-            skipCount++;            
-            continue;
-        }*/
-
-        for (int i = 0; i < firstFrog.Count() - 1; i++)
-        {
-            string[] input = rFile.Skip(firstFrog.ElementAt(i) + 1).Take(secondFrog.ElementAt(i) - firstFrog.ElementAt(i) - 2).ToArray();
-
-            /*try
-            {
-
-                //split string into timestamp and value
-                for (int j = 0; j < input.Count(); j++)
-                {
-                    string[] output = input[j].Split(',');
-                    output[0] = EpochToTimestamp(Double.Parse(output[0])).ToString();
-                    input[j] = String.Join(',', output);
-                }
-
-            } catch (System.Exception e) {
-                Console.WriteLine("Exception during time conversion " + e.Message + "\r\nInput value:" + string.Join(":", input[0..1]));
-                columnCount++;
-                continue;
-            }*/
-
-            strings.AddRange(input);
-        }
-
-        using (DataTable dTable = new DataTable())
-        {
-            dTable.Columns.Add(sensorName);
-
-            DataRow workRow = dTable.NewRow();
-
-            foreach (string line in strings)
-            {
-                dTable.Rows.Add(line);
-            }
-
-            //PrintDataTable(dTable);
-            string filePath = "D:\\Compressed Data\\CompiledTestdata.csv";
-            string tmpfilePath = "D:\\Compressed Data\\tmpCompiledTestdata.csv";
-
-            // Read all lines from the CSV file
-            if (!System.IO.File.Exists(filePath))
-            {
-                System.IO.File.Create(filePath).Close();
-            }
-
-            // Read all lines from the CSV file
-            if (!System.IO.File.Exists(tmpfilePath))
-            {
-                System.IO.File.Create(tmpfilePath).Close();
-            }
-
-            using (var sr = new StreamReader(filePath))
-            using (var sw = new StreamWriter(tmpfilePath))
-            {
-                string? line = sr.ReadLine();
-
-                if (line != null)
-                {
-                    sw.WriteLine($"{line}" + $"{sensorName},,");
-                }
-                else
-                {
-                    sw.WriteLine($"{sensorName},,");
-                }
-
-                //var lines = File.ReadAllLines(filePath).ToList();
-
-                // Add the new column header to the first line
-                /*if (lines.Any())
-                {
-                    lines[0] += $"{sensorName},,";
-                } else
-                {
-                    lines.Add($"{sensorName},,");
-                }*/
-
-                //int x = 1;
-                // Append new column data to each subsequent line
-                foreach (DataRow row in dTable.Rows)
-                {
-                    IEnumerable<string?> fields = row.ItemArray.Select(field => field.ToString());
-
-                    line = sr.ReadLine();
-
-                    if (line != null)
-                    {
-                        //check the number of commas matches the column count
-                        char ch = ',';
-                        int count = line.Count(c => c == ch);
-                        if (count < (columnCount))
-                        {
-                            sw.WriteLine(line + string.Concat(Enumerable.Repeat(",", (count) * 2)) + string.Join(" ", fields) + ",");
-                            //lines[x] += string.Concat(Enumerable.Repeat(",", (columnCount-count)*2)) + string.Join(" ", fields) + ",";
-                        }
-                        else
-                        {
-                            sw.WriteLine(line + string.Join(" ", fields) + ",");
-                            //lines[x] += string.Join(" ", fields) + ",";
-                        }
-                    }
-                    else
-                    {
-                        sw.WriteLine(line + string.Concat(Enumerable.Repeat(",", columnCount * 2)) + string.Join(" ", fields) + ",");
-                        //string outstring = string.Concat(Enumerable.Repeat(",", columnCount*2)) + string.Join(" ", fields) + ",";
-                        //lines.Add(outstring);
-                    }
-                    //x++;
-
-                }
-
-                // Write the updated lines back to the file
-                //File.WriteAllLines(filePath, lines);
-                
-
-
-                columnCount++;
-
-                //StringBuilder sb = new StringBuilder();
-
-                // Add column names
-                //IEnumerable<string> columnNames = dTable.Columns.Cast<DataColumn>().Select(column => column.ColumnName);
-                //sb.AppendLine(string.Join(",", columnNames));
-
-                // Add rows
-                /*foreach (DataRow row in dTable.Rows)
-                {
-                    IEnumerable<string> fields = row.ItemArray.Select(field => field.ToString());
-                    sb.AppendLine(string.Join(",", fields));
-                }*/
-
-                // Write to file
-                //File.AppendAllText(filePath, sb.ToString());
-            }
-
-
-            FileInfo fi = new FileInfo(filePath);
-            FileInfo fifi = new FileInfo(tmpfilePath);
-
-            if (fifi.Length < fi.Length)
-            {
-                Console.WriteLine("File size error at repetition " + $"{z} {sensorName} tmp {fifi.Length} bytes real {fi.Length} bytes. Discarding record.");
-                skipCount++;
-            }else
-            {
-                System.IO.File.Delete(filePath);
-                System.IO.File.Copy(tmpfilePath, filePath);
-            }
-
-        }
-    }
-
-    return 0;
+    return data;
 }
+
 
 
 void unzip(IEnumerable<FileInfo> dataFiles)
@@ -563,8 +317,14 @@ async Task<List<dataPoint>> GetStrainData()
 
     int minuteJumps = 15;
 
-    DateTime fromDTP = DateTime.Now.AddHours(-1);
-    DateTime toDTP = DateTime.Now;
+    Console.WriteLine("Enter the start time");
+    //Console.ReadLine();
+    Console.WriteLine("Enter the end time");
+    //
+    //Console.ReadLine();
+
+    DateTime fromDTP = DateTime.Parse("19/06/25 10:00:00");
+    DateTime toDTP = DateTime.Parse("19/06/25 11:00:00"); ;
 
     List<dataPoint> data = new List<dataPoint>();
 
@@ -723,6 +483,7 @@ void PeriDynamics(Matrix<double> LoadVector, LoadAndCycle Load, int location, Li
     Console.WriteLine("Location " + (location + 1) + " Peridynamics damage count " + damage+". \tEquivalent yearly damage " + year_factor * damage);
 }
 
+
 List<Matrix<double>> getCriticalStrains(List<Matrix<double>> modeList)
 {
     List<Matrix<double>> criticalStrainMatrix = new List<Matrix<double>>();
@@ -778,139 +539,138 @@ List<Matrix<double>> getCriticalStrains(List<Matrix<double>> modeList)
     return criticalStrainMatrix;
 }
 
-void RainflowAndAmplitudes(List<Matrix<double>> strainList, List<Matrix<double>> modeShape, List<long> timeData)
+void RainflowAndAmplitudes(List<StrainData> strainList)
 {
     //Establish the equivalent strains for each of the critical locations across the boat before calculating their respective rainfalls.
 
+    //Identify the sensors for which data has been provided. This may not be the case that all
+    //locations have data.
+
     //List<Matrix<double>> critStrain = getCriticalStrains(modeList);
 
-    List<double> Location1 = new List<double>();
-    List<double> Location2 = new List<double>();
-    List<double> Location3 = new List<double>();
-    List<double> Location4 = new List<double>();
-    List<double> Location5 = new List<double>();
-    List<double> Location6 = new List<double>();
+    List<StrainData> LocationData = new List<StrainData>(6);
+    StrainData blankSD = new StrainData();
+
+    foreach(StrainData sd in strainList)
+    {
+        if (sd.name.Contains("L1") || sd.name.Contains("R1")) { LocationData.Add(sd); } 
+        if (sd.name.Contains("L2") || sd.name.Contains("R2")) { LocationData.Add(sd); } 
+        if (sd.name.Contains("L3") || sd.name.Contains("R3")) { LocationData.Add(sd); } 
+        if (sd.name.Contains("L4")) { LocationData.Add(sd); } 
+        if (sd.name.Contains("L5")) { LocationData.Add(sd); } 
+        if (sd.name.Contains("L6")) { LocationData.Add(sd); } 
+    }
 
     Console.WriteLine("Rainflow Start " + strainList.Count());
 
-    Location1 = removeDuplicates(strainList, 0);
-    Location2 = removeDuplicates(strainList, 1);
-    Location3 = removeDuplicates(strainList, 2);
-    Location4 = removeDuplicates(strainList, 3);
-    Location5 = removeDuplicates(strainList, 4);
-    Location6 = removeDuplicates(strainList, 5);
+    LocationData = removeDuplicates(LocationData);
 
-    Console.WriteLine("Remove Duplicates\r\n" + Location1.Count + " " + Location2.Count + " " + Location3.Count + " " + Location4.Count + " " + Location5.Count + " " + Location6.Count);
+    foreach (StrainData ld in LocationData)
+    {
+        Console.WriteLine("Remove Duplicates "+ ld.name + " "+ld.strain.Count() );
+    }
 
     //ensure that only turning points are left in the data
 
-    Location1 = findTurningPoints(Location1);
-    Location2 = findTurningPoints(Location2);
-    Location3 = findTurningPoints(Location3);
-    Location4 = findTurningPoints(Location4);
-    Location5 = findTurningPoints(Location5);
-    Location6 = findTurningPoints(Location6);
+    LocationData = findTurningPoints(LocationData);
 
-    Console.WriteLine("Find Turning Points\r\n" + Location1.Count + " " + Location2.Count + " " + Location3.Count + " " + Location4.Count + " " + Location5.Count + " " + Location6.Count);
+    foreach (StrainData ld in LocationData)
+    {
+        Console.WriteLine("Turning Points " + ld.name + " " + ld.strain.Count());
+    }
+
     //Rearrange the data to begin and end with the largest absolute value (cut and splice)
 
-    Location1 = AbsoluteRearrange(Location1);
-    Location2 = AbsoluteRearrange(Location2);
-    Location3 = AbsoluteRearrange(Location3);
-    Location4 = AbsoluteRearrange(Location4);
-    Location5 = AbsoluteRearrange(Location5);
-    Location6 = AbsoluteRearrange(Location6);
+    LocationData = AbsoluteRearrange(LocationData);
 
-    Console.WriteLine("Absolute rearrange Location1 " + Location1.ElementAt(0) + " " + Location1.ElementAt(Location1.Count() - 1));
-    Console.WriteLine("Absolute rearrange Location2 " + Location2.ElementAt(0) + " " + Location2.ElementAt(Location2.Count() - 1));
-    Console.WriteLine("Absolute rearrange Location3 " + Location3.ElementAt(0) + " " + Location3.ElementAt(Location3.Count() - 1));
-    Console.WriteLine("Absolute rearrange Location4 " + Location4.ElementAt(0) + " " + Location4.ElementAt(Location4.Count() - 1));
-    Console.WriteLine("Absolute rearrange Location5 " + Location5.ElementAt(0) + " " + Location5.ElementAt(Location5.Count() - 1));
-    Console.WriteLine("Absolute rearrange Location6 " + Location6.ElementAt(0) + " " + Location6.ElementAt(Location6.Count() - 1));
+    foreach (StrainData ld in LocationData)
+    {
+        Console.WriteLine("Absolute rearrange "+ ld.name + " max " + ld.strain[ld.strain.Count-1] + " min " + ld.strain[0]);
+    }
+
 
     //Load Range and Cycle counts
-    LoadAndCycle Load1 = LoadAndCycleCount(Location1);
-    LoadAndCycle Load2 = LoadAndCycleCount(Location2);
-    LoadAndCycle Load3 = LoadAndCycleCount(Location3);
-    LoadAndCycle Load4 = LoadAndCycleCount(Location4);
-    LoadAndCycle Load5 = LoadAndCycleCount(Location5);
-    LoadAndCycle Load6 = LoadAndCycleCount(Location6);
+    List<LoadAndCycle> LocationLoads = LoadAndCycleCount(LocationData);
+
 
     Thread.Sleep(50);
 
-   /* Matrix<double> PlotMatrix = DenseMatrix.Create(6, Load3.CycleRange.Count(), 0);
+    /* Matrix<double> PlotMatrix = DenseMatrix.Create(6, Load3.CycleRange.Count(), 0);
 
-    for (int i = 0; i < Load3.CycleRange.Count(); i++)
-    {
-        PlotMatrix[0, i] = Load3.CycleRange.ElementAt(i);
-        PlotMatrix[1, i] = Load4.CycleRange.ElementAt(i);
-        PlotMatrix[2, i] = Load5.CycleRange.ElementAt(i);
-        PlotMatrix[3, i] = Load193.CycleRange.ElementAt(i);
-        PlotMatrix[4, i] = Load194.CycleRange.ElementAt(i);
-        PlotMatrix[5, i] = Load195.CycleRange.ElementAt(i);
+     for (int i = 0; i < Load3.CycleRange.Count(); i++)
+     {
+         PlotMatrix[0, i] = Load3.CycleRange.ElementAt(i);
+         PlotMatrix[1, i] = Load4.CycleRange.ElementAt(i);
+         PlotMatrix[2, i] = Load5.CycleRange.ElementAt(i);
+         PlotMatrix[3, i] = Load193.CycleRange.ElementAt(i);
+         PlotMatrix[4, i] = Load194.CycleRange.ElementAt(i);
+         PlotMatrix[5, i] = Load195.CycleRange.ElementAt(i);
 
-    }
+     }
 
-    PlotData(PlotMatrix, "Pre-count plot");*/
+     PlotData(PlotMatrix, "Pre-count plot");*/
 
     //PlotData(PlotMatrix, "Post-count plot");
 
-    Console.WriteLine("Cycles 1 " + Load1.CycleCount + " Cycles 2 " + Load2.CycleCount + " Cycles 3 " + Load3.CycleCount+" Cycles 4 " + Load4.CycleCount+" Cycles 5 " + Load5.CycleCount+" Cycles 6 " + Load6.CycleCount);
+    foreach (LoadAndCycle ld in LocationLoads)
+    {
+        Console.WriteLine("Load and Cycle for "+ ld.Name +"Cycles " + ld.CycleCount + " Loads " + ld.CycleRange.Max());
+    }
 
 
-    double eqAmpRangeLocation1 = EquivalentAmplitudeRange(Load1);
-    double eqAmpRangeLocation2 = EquivalentAmplitudeRange(Load2);
-    double eqAmpRangeLocation3 = EquivalentAmplitudeRange(Load3);
-    double eqAmpRangeLocation4 = EquivalentAmplitudeRange(Load4);
-    double eqAmpRangeLocation5 = EquivalentAmplitudeRange(Load5);
-    double eqAmpRangeLocation6 = EquivalentAmplitudeRange(Load6);
-
-    
-    Matrix<double> eqAmpMatrix = DenseMatrix.OfArray(new[,]{{ eqAmpRangeLocation1},
-                                                            { eqAmpRangeLocation2},
-                                                            { eqAmpRangeLocation3},
-                                                            { eqAmpRangeLocation4},
-                                                            { eqAmpRangeLocation5},
-                                                            { eqAmpRangeLocation6}});
-
+    Matrix<double> eqAmpMatrix = EquivalentAmplitudeRange(LocationLoads);
 
 
     Matrix<double> LoadVector = eqAmpModeShape(eqAmpMatrix);
 
     Console.WriteLine(LoadVector);
-    List<LoadAndCycle> LoadRangeList = new List<LoadAndCycle>();
+    /*List<LoadAndCycle> LoadRangeList = new List<LoadAndCycle>();
 
-    LoadRangeList.Add(Load1); LoadRangeList.Add(Load2); LoadRangeList.Add(Load3); LoadRangeList.Add(Load4); LoadRangeList.Add(Load5); LoadRangeList.Add(Load6);
+    LoadRangeList.Add(Load1); LoadRangeList.Add(Load2); LoadRangeList.Add(Load3); LoadRangeList.Add(Load4); LoadRangeList.Add(Load5); LoadRangeList.Add(Load6);*/
+
+    List<long> timeData = new List<long>();
+
+    timeData.Add(LocationData[0].time.Min());
+    timeData.Add(LocationData[0].time.Max());
+
 
     for (int j = 0; j < periMatrix.ColumnCount; j++)
     {
-        PeriDynamics(LoadVector, LoadRangeList.ElementAt(j), j, timeData);
+        PeriDynamics(LoadVector, LocationLoads.ElementAt(j), j, timeData);
     }
 
-    for (int j=0; j<eqAmpMatrix.RowCount; j++)
+    for (int j=0; j< LocationLoads.Count(); j++)
     {
-        SNDamage(eqAmpMatrix[j, 0], LoadRangeList.ElementAt(j), j, timeData);
+        SNDamage(eqAmpMatrix[j, 0], LocationLoads.ElementAt(j), j, timeData);
     }
    
 
 }
 
-double EquivalentAmplitudeRange(LoadAndCycle Load)
+Matrix<double> EquivalentAmplitudeRange(List<LoadAndCycle> Loads)
 {
     //determine the equivalent amplitude range
 
     List<double> eqAmpRange = new List<double>();
+    int count = 0;
 
-    for (int i=0;i<Load.CycleRange.Count();i++)
+    Matrix<double> eqAmpMatrix = Matrix<double>.Build.Dense(6,1);
+
+    foreach (LoadAndCycle ld in Loads)
     {
-        eqAmpRange.Add(Math.Pow(((i / Load.CycleCount) * Math.Pow(Load.CycleRange.ElementAt(i), 5)), 0.2));
-        //Console.WriteLine(eqAmpRange.ElementAt(i));
-    }    
 
-    Console.WriteLine("Equivalent Amplitude  Range Sum " + eqAmpRange.Sum());
+        for (int i = 0; i < ld.CycleRange.Count(); i++)
+        {
+            eqAmpRange.Add(Math.Pow(((i / ld.CycleCount) * Math.Pow(ld.CycleRange[i], 5)), 0.2));
+            //Console.WriteLine(eqAmpRange.ElementAt(i));
+        }
 
+        Console.WriteLine("Equivalent Amplitude  Range Sum " + eqAmpRange.Sum());
 
-    return eqAmpRange.Sum();
+        eqAmpMatrix[count, 0] = eqAmpRange.Sum();
+    }
+
+    return eqAmpMatrix;
 
 }
 
@@ -984,7 +744,7 @@ void PlotData(Matrix<double> PlotMatrix, string title)
 
 //Matrix<double> modeShape = govModeShape.TransposeThisAndMultiply(govModeShape).Inverse() * (govModeShape.Transpose() * strainData);
 
-StrainData DataHandler(List<dataPoint> datapoints)
+List<StrainData> DataHandler(List<dataPoint> datapoints)
 {
     //extract time range
 
@@ -992,45 +752,203 @@ StrainData DataHandler(List<dataPoint> datapoints)
 
     //get list of name versus values
 
-    StrainData sd = new StrainData();
-    sd.strain = new List<double>();
-    sd.time = new List<long>();
+    
+    List<string> nameArray = new List<String>();
 
     int j = 0;
 
-    for (int i=j;i<datapoints.Count();i++)
+    for (int i=0;i<datapoints.Count();i++)
     {
-        sd.name = datapoints[i].name;
-        foreach (infPoint inf in datapoints[i].points)
-        {
-            sd.strain.Add(inf.value);
-            sd.time.Add(inf.date);
-        }
+        StrainData sd = new StrainData();
+        sd.strain = new List<double>();
+        sd.time = new List<long>();
 
-        while (i < datapoints.Count)
+        sd.name = datapoints[i].name;
+
+        if (nameArray.Contains(sd.name)) { Console.WriteLine("data already counted"); continue; }
+
+        for (int z = i;z< datapoints.Count();z++)
         {
-            Console.WriteLine(sd.name + " " + datapoints[i].name + " " + i);
-            if (datapoints[i].name == sd.name)
+            if (datapoints[z].name == sd.name && !(nameArray.Contains(sd.name)))
             {
-                foreach (infPoint inf in datapoints[i].points)
-                {
-                    sd.strain.Add(inf.value);
-                    sd.time.Add(inf.date);
-                }
-                break;
+
+                    foreach (infPoint inf in datapoints[z].points)
+                    {
+                        sd.strain.Add(inf.value);
+                        sd.time.Add(inf.date);
+                    }
+
+                
+
+                //datapoints.Remove(datapoint);
             }
         }
 
+        dataList.Add(sd);
+        nameArray.Add(sd.name);
+
     }
 
-    return sd;
+    return dataList;
+}
+
+
+/*Matrix<double> StraindataToMatrix(List<StrainData> data)
+
+{
+    //Matrix<double> DataOut = DenseMatrix.OfRows(data.Count(), data.ElementAt(0).strain.Count(), data.ElementAt(0).strain.ToArray());
+
+
+    
+
+    return DataOut;
+}*/
+
+void ZipData(StrainData sData)
+{
+    //Create data directory
+    string dataFolder = "D:\\SHM_Data\\" +  sData.name;
+
+    if (!Directory.Exists(dataFolder))
+    {
+        Directory.CreateDirectory(dataFolder);
+    }
+
+    StreamWriter sw = new StreamWriter(dataFolder + "\\"+ sData.name + ".txt");
+
+    sw.WriteLine(sData.name);
+
+    for(int i=0; i<sData.strain.Count();i++)
+    {
+        sw.WriteLine(String.Join(",", sData.time[i], sData.strain[i]));
+    }
+
+    sw.Dispose();
+
+    Thread.Sleep(300);
+
+    string ZipPath = Directory.GetParent(dataFolder) + "\\" + sData.name + ".zip";
+
+    if (System.IO.File.Exists(ZipPath))
+    {
+        System.IO.File.Delete(ZipPath);
+    }
+
+    ZipFile.CreateFromDirectory(dataFolder, ZipPath);   
+
+
+}
+
+void DataToFile()
+{
+    Console.WriteLine("Enter the sensor data to retrieve");
+    sensorsTB = Console.ReadLine();
+
+    List<dataPoint> data = GetStrainData().Result;
+
+    Task.WaitAll();
+
+    List<StrainData> straindataList = DataHandler(data);
+
+    foreach (StrainData sd in straindataList)
+    {
+        Console.WriteLine(sd.name);
+        //PlotData(DenseMatrix.OfArray(straindataList.ElementAt(0).strain.ToArray()), straindataList.ElementAt(0).name);
+        ZipData(sd);
+    }
+}
+
+void PerformCalculation()
+{
+    //Gather data from the topside sensors - later modify the data get function with a time range
+
+    List<dataPoint> dataOut = new List<dataPoint>();
+
+    List<StrainData> LongGauge = new List<StrainData> ();
+    List<StrainData> ShortGauge = new List<StrainData>();
+    List<StrainData> DispGauge = new List<StrainData>();
+
+    //Location SG
+
+    try
+    {
+        string[] SGarray = new string[6] { Location1SG, Location2SG, Location3SG, Location4SG, Location5SG, Location6SG };
+        foreach (string SG in SGarray)
+        {
+            sensorsTB = SG;
+            dataOut = GetStrainData().Result;
+            Task.WaitAll();
+            List<StrainData> tmpData = DataHandler(dataOut);
+
+            //------------------------------------------------------------//
+            //Averaging of the sensors should take place somewhere here
+            //------------------------------------------------------------//
+
+
+            ShortGauge.AddRange(tmpData);
+        }
+
+        //ShortGauge = DataHandler(dataOut);
+
+    }catch (Exception ex)
+    {
+        Console.WriteLine("Short Gauge get failed " + ex.Message);
+    }
+
+
+    try
+    {
+        string LG_array = "L1-LG,L2-LG,L3-LG,L4-LG,L5-LG,L6-LG";
+
+        sensorsTB = LG_array;
+        dataOut = GetStrainData().Result;
+
+        LongGauge = DataHandler(dataOut);
+
+        Console.WriteLine("Long gauge data retrieved");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Failed to get long gauge " + ex.Message);
+    }
+
+    try
+    {
+        string DG_array = "L1-DG,L2-DG,L3-DG,L4-DG,L5-DG,L6-DG";
+
+        sensorsTB = DG_array;
+        dataOut = GetStrainData().Result;
+
+        DispGauge = DataHandler(dataOut);
+
+        Console.WriteLine("Displacement data retrieved");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Failed to get long gauge " + ex.Message);
+    }
+
+    //Gather data from the correlation sensors
+
+    //average the output of the short base gauges
+
+    Console.WriteLine("Long Gauge Calculation begins");
+    RainflowAndAmplitudes(LongGauge);
+
+    Console.WriteLine("Displacement Gauge Calculation beings");
+    RainflowAndAmplitudes(DispGauge);
+
+
+    Console.WriteLine("Calculation Stages Complete");
+}
+
+void RosetteVonMises()
+{
+
 }
 
 int Main(string[] args)
 {
-    // See https://aka.ms/new-console-template for more information
-    Console.WriteLine("Hello, World!");
-
     Console.WriteLine("Enter the path to the data folder");
     string? datafolder = args[0];
 
@@ -1039,7 +957,25 @@ int Main(string[] args)
         Console.WriteLine(datafolder + " is not a valid folder");
         return -1;
     }
-    
+
+    Console.WriteLine("Enter a data option, 1 - Sensor to File\r\n 2 - Calculation Validation\r\n 3 - von Mises Calculation for Rosette's");
+    string option = Console.ReadLine();
+
+    switch (option)
+    {
+        case "1":
+            DataToFile();
+            return 0;
+        case "2":
+            PerformCalculation();
+            return 0;
+        case "3":
+            RosetteVonMises();
+            return 0;
+        default:
+            return 0;
+    }
+
     Console.WriteLine("Enter the sensor data to retrieve");
     sensorsTB =  Console.ReadLine();
 
@@ -1049,9 +985,11 @@ int Main(string[] args)
 
     List<StrainData> straindataList= DataHandler(data);
 
-    Console.WriteLine(straindataList.name);
-
-    string masterFile = "";
+    foreach (StrainData sd in straindataList)
+    {
+        Console.WriteLine(sd.name);
+        //PlotData(DenseMatrix.OfArray(straindataList.ElementAt(0).strain.ToArray()), straindataList.ElementAt(0).name);
+    }
 
     DirectoryInfo fi = new DirectoryInfo(datafolder);
 
@@ -1059,9 +997,9 @@ int Main(string[] args)
 
     unzip(dataFiles);
 
-    List<double> strainData = new List<double>();
+    //List<double> strainData = new List<double>();
 
-    List<List<double>> LocStrainData = new List<List<double>>();
+    //List<List<double>> LocStrainData = new List<List<double>>();
     List<long> timeData = new List<long>();
 
     foreach (FileInfo dataFile in dataFiles)
@@ -1096,7 +1034,7 @@ int Main(string[] args)
 
     List<Matrix<double>> modeShape = getModeShapeMatrix(dataFiles, out strainList, out timeData);
 
-    RainflowAndAmplitudes(strainList, modeShape, timeData);
+    //RainflowAndAmplitudes(strainList, modeShape, timeData);
 
     return 0;
 }
@@ -1108,6 +1046,7 @@ Main(input);
 
 public struct LoadAndCycle
 {
+    public String Name;
     public List<double> CycleRange;
     public int CycleCount;
 }
