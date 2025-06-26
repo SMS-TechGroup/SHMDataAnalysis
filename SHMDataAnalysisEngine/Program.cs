@@ -1,8 +1,9 @@
-﻿using influxConnect.Calculation;
-using influxConnect;
+﻿using influxConnect;
+using influxConnect.Calculation;
 using InfluxDB.Client.Api.Domain;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
+using NodaTime.Calendars;
 using ScottPlot;
 using ScottPlot.Plottables;
 using System;
@@ -18,6 +19,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reactive;
 using System.Text;
+using static System.Net.Mime.MediaTypeNames;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using String = System.String;
 
@@ -70,7 +72,11 @@ string Rosette1 = "R1-1A,R1-1B,R1-1C,R1-2A,R1-2B,R1-2C,R1-3A,R1-3B,R1-3C,R1-4A,R
 string Rosette2 = "R2-1A,R2-1B,R2-1C,R2-2A,R2-2B,R2-2C,R2-3A,R2-3B,R2-3C,R2-4A,R2-4B,R2-4C,R2-5A,R2-5B,R2-5C,R2-1-VM_ES,R2-2-VM_ES,R2-3-VM_ES,R2-4-VM_ES,R2-5-VM_ES,R2_AVG";
 string Rosette3 = "R3-1A,R3-1B,R3-1C,R3-2A,R3-2B,R3-2C,R3-3A,R3-3B,R3-3C,R3-4A,R3-4B,R3-4C,R3-5A,R3-5B,R3-5C,R3-1-VM_ES,R3-2-VM_ES,R3-3-VM_ES,R3-4-VM_ES,R3-5-VM_ES,R3_AVG";
 
+string CriticalDetails = "Detail-3,Detail-4,Detail-5,Detail-193,Detail-194,Detail-195";
+
 string Calcuations = "Peri-SG1,Peri-SG2,Peri-SG3,Peri-SG4,Peri-SG5,Peri-SG6,SN-SG1,SN-SG2,SN-SG3,SN-SG4,SN-SG5,SN-SG6,Snd1,Snd2,Snd3,Snd4,Snd5,Snd6,loc1,loc2,loc3";
+
+double yield_stress = 250000000.0;
 
 DateTime EpochToTimestamp (double epochTimestamp)
 {
@@ -96,14 +102,15 @@ List<StrainData> findTurningPoints(List<StrainData> data)
     return data;
 }
 
+
 List<StrainData> removeDuplicates(List<StrainData> data)
 {
 
     foreach (StrainData sd in data)
     {
-        for (int num = 0; num < data.Count() - 1; num++)
+        for (int num = 0; num < sd.strain.Count() - 1; num++)
         {
-            if (sd.strain[num] != sd.strain[num + 1])
+            if (sd.strain[num] == sd.strain[num + 1])
             {
                 sd.strain.RemoveAt(num); sd.time.RemoveAt(num);
             }
@@ -113,14 +120,158 @@ List<StrainData> removeDuplicates(List<StrainData> data)
     return data;
 }
 
+void ShowComparison(List<CorrelationData> cData)
+{
+
+    StringBuilder sb = new StringBuilder();
+    int count = 0;
+
+    List<StrainData> cStrain = new List<StrainData>();
+
+    Matrix<double> mAmplitude = Matrix.Build.Dense(6,1);
+
+    for (int i =0; i<cData.Count;i++)
+    {
+        if (cData[i].name.Contains("R")) { cStrain.Add(cData[i].CriticalStrain); mAmplitude = cData[i].EquivalentRangeMatrix; }
+
+        
+        double[] results = new double[cData.Count];
+
+        for (int j =0; j < cData[i].EquivalentRangeMatrix.RowCount;j++)
+        {
+            double result = cData[i].EquivalentRangeMatrix[j,0] * (1 / mAmplitude[j,0]);
+            results[j] = result*100;
+        }
+
+        if (cData[i].name.Contains("1")) { count = 0; }
+        if (cData[i].name.Contains("2")) { count = 1; }
+        if (cData[i].name.Contains("3")) { count = 2; }
+
+        sb.AppendLine(cData[i].name + "\tMax Strain "+ cData[i].CriticalStrain.strain.Max().ToString("0.000") + "\tEquivalent Amplitude " + cData[i].EquivalentRangeMatrix[count,0].ToString("0.00") + 
+                        $"\tStrain comparison {((cData[i].CriticalStrain.strain.Max() / cStrain?[count].strain?.Max() ?? 1)*100).ToString("0.00")} %"
+                        +$"\tAmplitude comparison {results[count].ToString("0.00")} %");
+
+    }
+    sb.AppendLine();
+
+    Console.WriteLine(sb.ToString());
+}
+
+List<CorrelationData> CorrelationRainflow(List<StrainData> strainList)
+{
+    List<StrainData> LocationData = new List<StrainData>(6);
+    List<CorrelationData> correlationDatas = new List<CorrelationData>();
+
+    CorrelationData rosetteData = new CorrelationData();
+
+    foreach (StrainData sd in strainList)
+    {
+        if (sd.name.Contains("R1")) { LocationData.Add(sd); rosetteData.name = sd.name; correlationDatas.Add(rosetteData);  }
+        if (sd.name.Contains("R2")) { LocationData.Add(sd); rosetteData.name = sd.name; correlationDatas.Add(rosetteData); }
+        if (sd.name.Contains("R3")) { LocationData.Add(sd); rosetteData.name = sd.name; correlationDatas.Add(rosetteData); }
+    }
+
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        rosetteData = correlationDatas[i];
+        rosetteData.CriticalStrain = LocationData[i];
+        correlationDatas[i] = rosetteData;
+    }
+
+    Console.WriteLine("Rainflow Start " + strainList.Count());
+
+    LocationData = removeDuplicates(LocationData);
+    LocationData = findTurningPoints(LocationData);
+    LocationData = AbsoluteRearrange(LocationData);
+
+    List<LoadAndCycle> LocationLoads = LoadAndCycleCount(LocationData);
+
+    Thread.Sleep(50);
+
+    foreach (LoadAndCycle ld in LocationLoads)
+    {
+        Console.WriteLine("Load and Cycle for " + ld.Name + "Cycles " + ld.CycleCount + " Loads " + ld.CycleRange.Max());
+        int count = 0;
+        rosetteData = correlationDatas[count];
+        rosetteData.CriticalLoads = ld;
+        correlationDatas[count] = rosetteData;
+        count++;
+    }
+
+    Matrix<double> eqAmpMatrix = EquivalentAmplitudeRange(LocationLoads);
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        rosetteData = correlationDatas[i];
+        rosetteData.EquivalentRangeMatrix = eqAmpMatrix;
+        correlationDatas[i] = rosetteData;
+    }
+
+    Matrix<double> LoadVector = eqAmpModeShape(eqAmpMatrix);
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        rosetteData = correlationDatas[i];
+        rosetteData.LoadVector = LoadVector;
+        correlationDatas[i] = rosetteData;
+    }
+
+    Console.WriteLine("Load Vector " + LoadVector);
+
+    List<long> timeData = new List<long>();
+
+    timeData.Add(LocationData[0].time.Min());
+    timeData.Add(LocationData[0].time.Max());
+
+    Console.WriteLine(strainList.ElementAt(0).name + " results");
+    //convert the monitored to unmonitored stress for the case of the SN curve - does peridynamics not require this approach?
+
+    PDdamage pd = new PDdamage();
+    pd.location = new List<int>();
+    pd.damage = new List<double>();
+
+    for (int j = 0; j < periMatrix.ColumnCount; j++)
+    {
+        var (location, damage) = PeriDynamics(LoadVector, LocationLoads.ElementAt(j), j, timeData);
+        pd.location.Add(location);
+        pd.damage.Add(damage);
+    }
+
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        rosetteData = correlationDatas[i];
+        rosetteData.Peridynamics = pd;
+        correlationDatas[i] = rosetteData;
+    }
+
+    SNcurve sn = new SNcurve();
+    sn.location = new List<int>();
+    sn.damage = new List<double>();
+
+    for (int j = 0; j < LocationLoads.Count(); j++)
+    {
+        var (location, damage1, damage2) = SNDamage(eqAmpMatrix[j, 0], LocationLoads.ElementAt(j), j+3, timeData);
+        sn.location.Add(location);
+        sn.damage.Add(damage1);
+        sn.damage.Add(damage2);
+
+    }
+    //}
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        rosetteData = correlationDatas[i];
+        rosetteData.SNTotal = sn;
+        correlationDatas[i] = rosetteData;
+    }
+
+    return correlationDatas;
+}
+
 List<LoadAndCycle> LoadAndCycleCount(List<StrainData> data)
 {
 
     LoadAndCycle Load = new LoadAndCycle();
     List<LoadAndCycle> LocationLoads = new List<LoadAndCycle>(); ;
 
-    Load.CycleRange = new List<double>();
-    Load.CycleCount = new int();
+
 
     /*Matrix<double> PlotMatrix = DenseMatrix.Create(1,data.Count(),0);
 
@@ -138,6 +289,10 @@ List<LoadAndCycle> LoadAndCycleCount(List<StrainData> data)
     foreach (StrainData sd in data)
     {
         Load.Name = sd.name;
+        Load.CycleRange = new List<double>();
+        Load.CycleCount = 0;
+
+        if (LocationLoads.Any(item => item.Name == sd.name)) { LocationLoads.Add(LocationLoads.ElementAt(0)); continue; } ;
 
         while (true)
         {
@@ -226,15 +381,9 @@ List<StrainData> AbsoluteRearrange(List<StrainData> data)
 
         cut.Clear();
         join.Clear();
-
-
     }
-
-
     return data;
 }
-
-
 
 void unzip(IEnumerable<FileInfo> dataFiles)
 {    
@@ -323,8 +472,8 @@ async Task<List<dataPoint>> GetStrainData()
     //
     //Console.ReadLine();
 
-    DateTime fromDTP = DateTime.Parse("19/06/25 10:00:00");
-    DateTime toDTP = DateTime.Parse("19/06/25 11:00:00"); ;
+    DateTime fromDTP = DateTime.Parse("19/06/25 09:00:00");
+    DateTime toDTP = DateTime.Parse("19/06/25 10:00:00"); 
 
     List<dataPoint> data = new List<dataPoint>();
 
@@ -460,13 +609,23 @@ List<Matrix<double>> getModeShapeMatrix(IEnumerable<FileInfo> dataFiles, out Lis
 
 Matrix<double> eqAmpModeShape(Matrix<double>eqAmpMatrix)
 {
-    //translate for the critical locations
-    Matrix<double> modeShape = govModeShape.TransposeThisAndMultiply(govModeShape).Inverse() * (govModeShape.Transpose() * eqAmpMatrix);
+    Matrix<double> modeShape;
+
+    if (eqAmpMatrix.RowCount < 6)
+    {
+        modeShape = govModeShape.SubMatrix(3,3,0,3).TransposeThisAndMultiply(govModeShape.SubMatrix(3, 3, 0, 3).Inverse() * (govModeShape.SubMatrix(3, 3, 0, 3).Transpose() * eqAmpMatrix));
+    }else
+    {
+        modeShape = govModeShape.TransposeThisAndMultiply(govModeShape).Inverse() * (govModeShape.Transpose() * eqAmpMatrix);
+    }
+
+        //translate for the critical locations
+        
 
     return modeShape;
 }
 
-void PeriDynamics(Matrix<double> LoadVector, LoadAndCycle Load, int location, List<long> timeData)
+(int, double) PeriDynamics(Matrix<double> LoadVector, LoadAndCycle Load, int location, List<long> timeData)
 {
     double damage = periMatrix[0, location] + (periMatrix[1, location] * LoadVector[0, 0]) + (periMatrix[2, location] * LoadVector[1, 0]) + (periMatrix[3, location] * LoadVector[2, 0])
                     + (periMatrix[4, location] * Math.Pow(LoadVector[0, 0],2)) + (periMatrix[5, location] * Math.Pow(LoadVector[1, 0],2)) + (periMatrix[6, location] * Math.Pow(LoadVector[2, 0],2));
@@ -478,68 +637,14 @@ void PeriDynamics(Matrix<double> LoadVector, LoadAndCycle Load, int location, Li
     DateTime start_time = EpochToTimestamp(timeData.ElementAt(0));
     DateTime end_time = EpochToTimestamp(timeData.Last());
 
-    double year_factor = (8736*60) / (end_time - start_time).Minutes;
+    double year_factor = (8760*60) / (end_time - start_time).Minutes;
 
-    Console.WriteLine("Location " + (location + 1) + " Peridynamics damage count " + damage+". \tEquivalent yearly damage " + year_factor * damage);
+    Console.WriteLine($"Location {location + 1} Peridynamics count {damage.ToString("E")} \tEquivalent yearly damage {(year_factor * damage).ToString("E")}.\t\tLifetime damage {((17 * year_factor) * damage).ToString("E")}");
+
+    return ((location+1),damage);
 }
 
-
-List<Matrix<double>> getCriticalStrains(List<Matrix<double>> modeList)
-{
-    List<Matrix<double>> criticalStrainMatrix = new List<Matrix<double>>();
-
-
-    List<double> Critical3 = new List<double>();
-    List<double> Critical4 = new List<double>();
-    List<double> Critical5 = new List<double>();
-    List<double> Critical193 = new List<double>();
-    List<double> Critical194 = new List<double>();
-    List<double> Critical195 = new List<double>();
-
-
-    for (int i = 0; i < locMatrix.ColumnCount; i++)
-    {
-
-        for (int j = 0; j < modeList.Count() - 1; j++)
-            {
-
-            //Console.WriteLine(locMatrix);
-            //Console.WriteLine(modeList.ElementAt(j));
-
-            /*Critical3.Add((locMatrix.Row(0) * modeList.ElementAt(j))[0]);
-            Critical4.Add((locMatrix.Row(1) * modeList.ElementAt(j))[0]);
-            Critical5.Add((locMatrix.Row(2) * modeList.ElementAt(j))[0]);
-            Critical193.Add((locMatrix.Row(3) * modeList.ElementAt(j))[0]);
-            Critical194.Add((locMatrix.Row(4) * modeList.ElementAt(j))[0]);
-            Critical195.Add((locMatrix.Row(5) * modeList.ElementAt(j))[0]);*/
-
-            Matrix<double> strainMatrix = DenseMatrix.OfArray(new double[,]
-                                                            {{(locMatrix.Row(0) * modeList.ElementAt(j))[0]},
-                                                            {(locMatrix.Row(1) * modeList.ElementAt(j))[0]},
-                                                            {(locMatrix.Row(2) * modeList.ElementAt(j))[0]},
-                                                            {(locMatrix.Row(3) * modeList.ElementAt(j))[0]},
-                                                            {(locMatrix.Row(4) * modeList.ElementAt(j))[0]},
-                                                            {(locMatrix.Row(5) * modeList.ElementAt(j))[0]}});
-
-            criticalStrainMatrix.Add(strainMatrix);
-
-            //Console.WriteLine(locMatrix.Row(0) * modeList.ElementAt(j));
-
-            //Console.WriteLine(modeList.ElementAt(j));
-
-            }
-
-    }
-
-    /*foreach(Matrix<double> j in criticalStrainMatrix)
-    {
-        Console.WriteLine(j);
-    }*/
-
-    return criticalStrainMatrix;
-}
-
-void RainflowAndAmplitudes(List<StrainData> strainList)
+List<CorrelationData> RainflowAndAmplitudes(List<StrainData> strainList)
 {
     //Establish the equivalent strains for each of the critical locations across the boat before calculating their respective rainfalls.
 
@@ -549,51 +654,169 @@ void RainflowAndAmplitudes(List<StrainData> strainList)
     //List<Matrix<double>> critStrain = getCriticalStrains(modeList);
 
     List<StrainData> LocationData = new List<StrainData>(6);
-    StrainData blankSD = new StrainData();
+    //StrainData blankSD = new StrainData();
+
+    List<CorrelationData> correlationDatas = new List<CorrelationData>();
+
+    CorrelationData corData = new CorrelationData();
 
     foreach(StrainData sd in strainList)
     {
-        if (sd.name.Contains("L1") || sd.name.Contains("R1")) { LocationData.Add(sd); } 
-        if (sd.name.Contains("L2") || sd.name.Contains("R2")) { LocationData.Add(sd); } 
-        if (sd.name.Contains("L3") || sd.name.Contains("R3")) { LocationData.Add(sd); } 
-        if (sd.name.Contains("L4")) { LocationData.Add(sd); } 
-        if (sd.name.Contains("L5")) { LocationData.Add(sd); } 
-        if (sd.name.Contains("L6")) { LocationData.Add(sd); } 
+        if (sd.name.Contains("L1") || sd.name.Contains("R1")) { LocationData.Add(sd); corData.name = sd.name; correlationDatas.Add(corData); } 
+        if (sd.name.Contains("L2") || sd.name.Contains("R2")) { LocationData.Add(sd); corData.name = sd.name; correlationDatas.Add(corData); } 
+        if (sd.name.Contains("L3") || sd.name.Contains("R3")) { LocationData.Add(sd); corData.name = sd.name; correlationDatas.Add(corData); } 
+        if (sd.name.Contains("L4"))  { LocationData.Add(sd); corData.name = sd.name; correlationDatas.Add(corData); } 
+        if (sd.name.Contains("L5"))  { LocationData.Add(sd); corData.name = sd.name; correlationDatas.Add(corData); } 
+        if (sd.name.Contains("L6"))  { LocationData.Add(sd); corData.name = sd.name; correlationDatas.Add(corData); } 
     }
+
+    
+    List<Matrix<double>> modeShapeMatrix = new List<Matrix<double>>();
+
+        for (int i = 0; i < LocationData[0].strain.Count(); i++)
+        {
+            //validate data and it's location within the array
+            if (LocationData.Count < 6)
+            {
+                //find all names in location data
+                List<int> locNames = new List<int>();
+
+                for (int j = 0; j < LocationData.Count; j++)
+                {
+                    int temp = Int32.Parse(LocationData[j].name.Split("-")[0].Where(char.IsDigit).ToArray()[0].ToString());
+                    locNames.Add(temp);
+                }
+
+                for (int j = 0; j < (6 - locNames.Count()); j++)
+                {
+                    LocationData.Insert(locNames[j], strainList.ElementAt(0));
+                }
+
+            }
+
+            Matrix<double> strainMatrix = DenseMatrix.OfArray(new double[,]
+                                                    {{(LocationData.ElementAt(0).strain[i])},
+                                                {LocationData.ElementAt(1).strain[i]},
+                                                {LocationData.ElementAt(2).strain[i]},
+                                                {LocationData.ElementAt(3).strain[i]},
+                                                {LocationData.ElementAt(4).strain[i]},
+                                                {LocationData.ElementAt(5).strain[i]}});
+
+            Matrix<double> modeShape = govModeShape.TransposeThisAndMultiply(govModeShape).Inverse() * (govModeShape.Transpose() * strainMatrix);
+
+            modeShapeMatrix.Add(modeShape);
+        }
+
+
+        //Rearrange critical data into strains by location - formatting will help.
+
+
+
+        //Covert to the critical location data
+
+        List<StrainData> criticalLocation = new List<StrainData>();
+
+        foreach (string critName in (CriticalDetails.Split(",")))
+        {
+            StrainData strainData = new StrainData();
+            strainData.name = critName;
+            strainData.strain = new List<double>();
+            strainData.time = new List<long>();
+
+            criticalLocation.Add(strainData);
+        }
+
+    for (int i = 0; i < modeShapeMatrix.Count; i++)
+    {
+        for (int j =0;j<6;j++)
+        {
+            MathNet.Numerics.LinearAlgebra.Vector<double> details = locMatrix.Row(j) * modeShapeMatrix.ElementAt(i);
+            criticalLocation.ElementAt(j).strain.Add(details[0]);
+            criticalLocation.ElementAt(j).time.Add(LocationData.ElementAt(0).time[i]);
+        }
+    }
+
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        corData = correlationDatas[i];
+        corData.CriticalStrain = criticalLocation[i];
+        correlationDatas[i] = corData;
+    }
+
 
     Console.WriteLine("Rainflow Start " + strainList.Count());
 
-    LocationData = removeDuplicates(LocationData);
+    /*foreach (Matrix<double> ms in modeShapeMatrix)
+    {
+        StrainData criticalStrain = new StrainData();
+        criticalStrain.name = "Critical Strain";
+        criticalStrain.strain = new List<double>();
+        criticalStrain.time = new List<long>();
+        for(int i =0; i< locMatrix.RowCount; i++)
+        {
+            criticalStrain.strain.AddRange(locMatrix.Row(i) * ms);
+            criticalStrain.time.Add(strainList.ElementAt(0).time[i]);
+        }
+        
+        criticalLocation.Add(criticalStrain);
+    }*/
 
-    foreach (StrainData ld in LocationData)
+    //LocationData = removeDuplicates(LocationData);
+    criticalLocation = removeDuplicates(criticalLocation);
+
+    /*foreach (StrainData ld in LocationData)
     {
         Console.WriteLine("Remove Duplicates "+ ld.name + " "+ld.strain.Count() );
     }
+    foreach (StrainData cd in criticalLocation)
+    {
+        Console.WriteLine("Remove Duplicates critical "+ cd.strain.Count());
+    }*/
 
     //ensure that only turning points are left in the data
 
-    LocationData = findTurningPoints(LocationData);
+    //LocationData = findTurningPoints(LocationData);
+    criticalLocation = findTurningPoints(criticalLocation);
 
-    foreach (StrainData ld in LocationData)
+    /*foreach (StrainData ld in LocationData)
     {
         Console.WriteLine("Turning Points " + ld.name + " " + ld.strain.Count());
     }
+    foreach (StrainData cd in criticalLocation)
+    {
+        Console.WriteLine("Turning Points " + cd.name + " " + cd.strain.Count());
+    }*/
 
     //Rearrange the data to begin and end with the largest absolute value (cut and splice)
 
     LocationData = AbsoluteRearrange(LocationData);
+    criticalLocation = AbsoluteRearrange(criticalLocation);
 
-    foreach (StrainData ld in LocationData)
+    /*foreach (StrainData ld in LocationData)
     {
         Console.WriteLine("Absolute rearrange "+ ld.name + " max " + ld.strain[ld.strain.Count-1] + " min " + ld.strain[0]);
     }
-
+    foreach (StrainData cd in criticalLocation)
+    {
+        Console.WriteLine("Absolute rearrange " + cd.name + " max " + cd.strain[cd.strain.Count - 1] + " min " + cd.strain[0]);
+    }*/
 
     //Load Range and Cycle counts
-    List<LoadAndCycle> LocationLoads = LoadAndCycleCount(LocationData);
-
+    //List<LoadAndCycle> LocationLoads = LoadAndCycleCount(LocationData);
+    List<LoadAndCycle> CriticalLocationLoads = LoadAndCycleCount(criticalLocation);
 
     Thread.Sleep(50);
+
+    List<StressIntensity> CriticalIntensities = deriveStressIntensity(CriticalLocationLoads);
+    //foreach(StressIntensity si in CriticalIntensities)
+    //{
+        //int count = 0;
+        //corData = correlationDatas[count];
+        //corData.stressIntensity = si;
+        //correlationDatas[count] = corData;
+        //count++;
+    //}
+    
 
     /* Matrix<double> PlotMatrix = DenseMatrix.Create(6, Load3.CycleRange.Count(), 0);
 
@@ -612,39 +835,97 @@ void RainflowAndAmplitudes(List<StrainData> strainList)
 
     //PlotData(PlotMatrix, "Post-count plot");
 
-    foreach (LoadAndCycle ld in LocationLoads)
+
+    foreach (LoadAndCycle ld in CriticalLocationLoads)
     {
-        Console.WriteLine("Load and Cycle for "+ ld.Name +"Cycles " + ld.CycleCount + " Loads " + ld.CycleRange.Max());
+        Console.WriteLine("Critical Load and Cycle for " + ld.Name + " Cycles " + ld.CycleCount + " Loads " + ld.CycleRange.Max());
+        int count = 0;
+        corData = correlationDatas[count];
+        corData.CriticalLoads = ld;
+        correlationDatas[count] = corData;
+        count++;
     }
 
 
-    Matrix<double> eqAmpMatrix = EquivalentAmplitudeRange(LocationLoads);
+    //Matrix<double> eqAmpMatrix = EquivalentAmplitudeRange(LocationLoads);
+    Matrix<double> eqAmpMatrixCritical = EquivalentAmplitudeRange(CriticalLocationLoads);
+    corData.EquivalentRangeMatrix = eqAmpMatrixCritical;
+    for(int i =0;i<correlationDatas.Count;i++)
+    {
+        corData = correlationDatas[i];
+        corData.EquivalentRangeMatrix = eqAmpMatrixCritical;
+        correlationDatas[i] = corData;
+    }
 
+    //if (!(strainList.ElementAt(0).name.Contains("R1") || strainList.ElementAt(0).name.Contains("R2") || strainList.ElementAt(0).name.Contains("R3")))
+    //{
+    //Matrix<double> LoadVector = eqAmpModeShape(eqAmpMatrix);
+    Matrix<double> CriticalLoadVector = eqAmpModeShape(eqAmpMatrixCritical);
 
-    Matrix<double> LoadVector = eqAmpModeShape(eqAmpMatrix);
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        corData = correlationDatas[i];
+        corData.LoadVector = CriticalLoadVector;
+        correlationDatas[i] = corData;
+    }
 
-    Console.WriteLine(LoadVector);
-    /*List<LoadAndCycle> LoadRangeList = new List<LoadAndCycle>();
+    //Console.WriteLine("Load Vector "+LoadVector);
+    Console.WriteLine("Critical Vector " +CriticalLoadVector);
 
-    LoadRangeList.Add(Load1); LoadRangeList.Add(Load2); LoadRangeList.Add(Load3); LoadRangeList.Add(Load4); LoadRangeList.Add(Load5); LoadRangeList.Add(Load6);*/
+        /*List<LoadAndCycle> LoadRangeList = new List<LoadAndCycle>();
 
-    List<long> timeData = new List<long>();
+        LoadRangeList.Add(Load1); LoadRangeList.Add(Load2); LoadRangeList.Add(Load3); LoadRangeList.Add(Load4); LoadRangeList.Add(Load5); LoadRangeList.Add(Load6);*/
 
-    timeData.Add(LocationData[0].time.Min());
-    timeData.Add(LocationData[0].time.Max());
+        List<long> timeData = new List<long>();
 
+        timeData.Add(LocationData[0].time.Min());
+        timeData.Add(LocationData[0].time.Max());
+
+        Console.WriteLine(strainList.ElementAt(0).name + " results");
+
+    PDdamage pd = new PDdamage();
+    pd.location = new List<int>();
+    pd.damage = new List<double>();
 
     for (int j = 0; j < periMatrix.ColumnCount; j++)
     {
-        PeriDynamics(LoadVector, LocationLoads.ElementAt(j), j, timeData);
+        //PeriDynamics(LoadVector, LocationLoads.ElementAt(j), j, timeData);
+        var (location, damage) = PeriDynamics(CriticalLoadVector, CriticalLocationLoads.ElementAt(j), j, timeData);
+        pd.location.Add(location);
+        pd.damage.Add(damage);
     }
 
-    for (int j=0; j< LocationLoads.Count(); j++)
+    for (int i = 0; i < correlationDatas.Count; i++)
     {
-        SNDamage(eqAmpMatrix[j, 0], LocationLoads.ElementAt(j), j, timeData);
+        corData = correlationDatas[i];
+        corData.Peridynamics = pd;
+        correlationDatas[i] = corData;
     }
-   
 
+    //convert the monitored to unmonitored stress for the case of the SN curve - does peridynamics not require this approach?
+
+    SNcurve sn = new SNcurve();
+    sn.location = new List<int>();
+    sn.damage = new List<double>();
+
+    for (int j = 0; j < CriticalLocationLoads.Count(); j++)
+        {
+        //SNDamage(eqAmpMatrix[j, 0] * locMatrix[j,0], LocationLoads.ElementAt(j), j, timeData);
+        var(location, damage1, damage2) =  SNDamage(eqAmpMatrixCritical[j, 0], CriticalLocationLoads.ElementAt(j), j, timeData);
+        sn.location.Add(location);
+        sn.damage.Add(damage1);
+        sn.damage.Add(damage2);
+    }
+    //}
+
+    for (int i = 0; i < correlationDatas.Count; i++)
+    {
+        corData = correlationDatas[i];
+        corData.SNTotal = sn;
+        correlationDatas[i] = corData;
+    }
+
+    return correlationDatas;
 }
 
 Matrix<double> EquivalentAmplitudeRange(List<LoadAndCycle> Loads)
@@ -654,27 +935,31 @@ Matrix<double> EquivalentAmplitudeRange(List<LoadAndCycle> Loads)
     List<double> eqAmpRange = new List<double>();
     int count = 0;
 
-    Matrix<double> eqAmpMatrix = Matrix<double>.Build.Dense(6,1);
+    Matrix<double> eqAmpMatrix = Matrix<double>.Build.Dense(Loads.Count,1);
 
     foreach (LoadAndCycle ld in Loads)
     {
 
         for (int i = 0; i < ld.CycleRange.Count(); i++)
         {
-            eqAmpRange.Add(Math.Pow(((i / ld.CycleCount) * Math.Pow(ld.CycleRange[i], 5)), 0.2));
+            //E is only multipled by 3 to account for the microstrain 10^-6 conversion of the strain input
+            eqAmpRange.Add(((i / ld.CycleCount) * Math.Pow(ld.CycleRange[i], 5)));
             //Console.WriteLine(eqAmpRange.ElementAt(i));
         }
 
-        Console.WriteLine("Equivalent Amplitude  Range Sum " + eqAmpRange.Sum());
+        Console.WriteLine("Equivalent Amplitude Range"+ld.Name + " \t" + (Math.Pow(eqAmpRange.Sum(),0.2)).ToString("E"));
 
-        eqAmpMatrix[count, 0] = eqAmpRange.Sum();
+        eqAmpMatrix[count, 0] = Math.Pow(eqAmpRange.Sum(),0.2);
+        count++;
+
+        eqAmpRange.Clear();
     }
 
     return eqAmpMatrix;
 
 }
 
-void SNDamage(double eqAmp, LoadAndCycle Load, int location, List<long> timeData)
+(int, double, double) SNDamage(double eqAmp, LoadAndCycle Load, int location, List<long> timeData)
 {
     //material properties
     double thickness = 25.0;
@@ -697,20 +982,21 @@ void SNDamage(double eqAmp, LoadAndCycle Load, int location, List<long> timeData
     double year_factor = (8736 * 60) / (end_time - start_time).Minutes;
 
     damage = Math.Pow((a - m * Math.Log10(eqAmp * Math.Pow((thickness / thick_ref), k))),10);  
-    damage = Load.CycleCount / damage;
+    double damage1 = Load.CycleCount / damage;
 
-    Console.WriteLine("Location "+(location+1)+" SN damage <10e7: " + damage+".\t\tEquivalent yearly damage " + year_factor * damage);
+    Console.WriteLine($"Location {location + 1} <10e7 damage count {damage1.ToString("E")} \tEquivalent yearly damage {(year_factor * damage1).ToString("E")}.\t\tLifetime damage {((17 * year_factor) * damage1).ToString("E")}");
 
     //> 10e7 cycles
     a = 15.606;
     m = 5.0;
 
     damage = Math.Pow((a - m * Math.Log10(eqAmp * Math.Pow((thickness / thick_ref), k))), 10);
-    damage = Load.CycleCount / damage;
+    double damage2 = Load.CycleCount / damage;
 
-    Console.WriteLine("Location " + (location + 1) + " SN damage >10e7: " + damage + ".\t\tEquivalent yearly damage " + year_factor * damage);
+    Console.WriteLine($"Location {location + 1} >10e7 damage count {damage2.ToString("E")} \tEquivalent yearly damage {(year_factor * damage2).ToString("E")}.\t\tLifetime damage {((17 * year_factor) * damage2).ToString("E")}");
+    //presumed 17 years service life
 
-    
+    return ((location + 1), damage1, damage2);
 }
 
 void PlotData(Matrix<double> PlotMatrix, string title)
@@ -737,7 +1023,6 @@ void PlotData(Matrix<double> PlotMatrix, string title)
     {
         Console.WriteLine(ex.Message);
     }
-
     
 }
 
@@ -858,18 +1143,87 @@ void DataToFile()
     }
 }
 
+List<StrainData> AverageLocationData (List<StrainData> tmpData)
+{
+    List<StrainData> avgData = new List<StrainData>();
+
+    avgData.Add(tmpData.ElementAt(0));
+
+    for (int i = 0; i < tmpData[0].strain.Count(); i++)
+    {
+
+        List<double> avgList = new List<double>();
+
+        foreach (StrainData sd in tmpData)
+        {
+            avgList.Add(sd.strain[i]);
+
+
+        }
+
+        avgData.ElementAt(0).strain[i] = avgList.Average();
+    }
+
+    return avgData;
+}
+
 void PerformCalculation()
 {
     //Gather data from the topside sensors - later modify the data get function with a time range
+    List<CorrelationData> comparator = new List<CorrelationData>();
 
     List<dataPoint> dataOut = new List<dataPoint>();
 
     List<StrainData> LongGauge = new List<StrainData> ();
     List<StrainData> ShortGauge = new List<StrainData>();
     List<StrainData> DispGauge = new List<StrainData>();
+    List<StrainData> CorrGauge = new List<StrainData>();
+
+
+    //von mises correlation gauges
+    try
+    {
+        //string[] rosArray = (string[])Rosette1.Split(",").ToArray().Concat(Rosette2.Split(",").ToArray().Concat(Rosette3.Split(",")));
+        List<string> tmpList = new List<string>();
+
+        List<StrainData> tmpData = new List<StrainData>();
+
+        foreach (string array in (string.Join(",",Rosette1,Rosette2,Rosette3)).Split(","))
+        {
+            if (array.Contains("VM_ES") || array.Contains("TG") || array.Contains("AVG") || array.Contains("B") || array.Contains("C"))
+            {
+                continue;
+            } else
+            {
+                tmpList.Add(array);
+            }
+        }
+
+        sensorsTB = String.Join(",", tmpList.ToArray());
+        dataOut = GetStrainData().Result;
+        Task.WaitAll();
+
+        tmpData = DataHandler(dataOut);
+
+        for (int i =0; i<tmpData.Count();i=i+5)
+        {
+            //average rosette's in sets of 3
+            List<StrainData> avgData = new List<StrainData>(3);
+
+            avgData = AverageLocationData(tmpData.GetRange(i,5));
+
+            CorrGauge.AddRange(avgData);
+        }
+
+        
+
+    } catch (System.Exception ex)
+    {
+        Console.WriteLine("Correlation get error " + ex.Message);
+    }
 
     //Location SG
-
+    
     try
     {
         string[] SGarray = new string[6] { Location1SG, Location2SG, Location3SG, Location4SG, Location5SG, Location6SG };
@@ -883,9 +1237,11 @@ void PerformCalculation()
             //------------------------------------------------------------//
             //Averaging of the sensors should take place somewhere here
             //------------------------------------------------------------//
+            List<StrainData> avgData = new List<StrainData>();
 
+            avgData = AverageLocationData(tmpData);
 
-            ShortGauge.AddRange(tmpData);
+            ShortGauge.Add(avgData.ElementAt(0));
         }
 
         //ShortGauge = DataHandler(dataOut);
@@ -928,22 +1284,269 @@ void PerformCalculation()
         Console.WriteLine("Failed to get long gauge " + ex.Message);
     }
 
+    List<CorrelationData> tmpOut = new List<CorrelationData>();
+
     //Gather data from the correlation sensors
 
-    //average the output of the short base gauges
+    Console.WriteLine("Correlation Gauge Calculation beggins");
+    tmpOut = CorrelationRainflow(CorrGauge);
+    comparator.AddRange(tmpOut);
+
+    Console.WriteLine("Short Gauge Calculation begins");
+    tmpOut = RainflowAndAmplitudes(ShortGauge);
+    comparator.AddRange(tmpOut);
 
     Console.WriteLine("Long Gauge Calculation begins");
-    RainflowAndAmplitudes(LongGauge);
+    tmpOut = RainflowAndAmplitudes(LongGauge);
+    comparator.AddRange(tmpOut);
 
     Console.WriteLine("Displacement Gauge Calculation beings");
-    RainflowAndAmplitudes(DispGauge);
+    tmpOut = RainflowAndAmplitudes(DispGauge);
+    comparator.AddRange(tmpOut);
 
 
     Console.WriteLine("Calculation Stages Complete");
+    Console.WriteLine("Comparison Statistics");
+
+    ShowComparison(comparator);
 }
 
 void RosetteVonMises()
 {
+    //Get the von Mises for a given time period
+    List<string> vmData = new List<string>();
+
+    
+    string[] vmStrings = new string[0];
+    foreach (string s in (string.Join(",", Rosette1, Rosette2, Rosette3)).Split(","))
+    {
+        if (s.Contains("VM"))
+        {
+            vmData.Add(s);
+            vmStrings.Append(s);
+        }
+    }
+
+    sensorsTB = String.Join(",", vmData.ToArray());
+
+    List < dataPoint > vmRawData = GetStrainData().Result;
+    Task.WaitAll();
+
+    List<StrainData> vmStrainData = DataHandler(vmRawData);
+
+    foreach (StrainData sd in vmStrainData)
+    {
+        Console.WriteLine($"{sd.name} has a maximum recorded von Mises of {sd.strain.Max().ToString("0.00")} MPa\t" +
+            $"or\t{(((sd.strain.Max()*Math.Pow(10,6)) / yield_stress)*100).ToString("0.00") } % of the yield stress");
+    }
+
+    //Take both the strain outputs and the VM_ES calculated value
+
+    //Calculate the principal stresses in all directions
+
+
+    //Derive the von Mises stress and compare with the yield criterion
+
+    //stress in each direciton is taken by the multiplication of the strain with the young's modulus
+
+    double YoungE = 206E9;
+    double ShearMod = 79E9;
+    double PoissonV = 0.3;
+
+    vmData.Clear();
+
+    foreach (string s in (string.Join(",", Rosette1, Rosette2, Rosette3)).Split(","))
+    {
+        if (!(s.Contains("VM") || s.Contains("AVG") || s.Contains("TG")))
+        {
+            vmData.Add(s);
+            vmStrings.Append(s);
+        }
+    }
+
+    sensorsTB = String.Join(",", vmData.ToArray());
+
+    List<dataPoint> vmCalcData = GetStrainData().Result;
+    Task.WaitAll();
+
+    List<StrainData> vmStrainCalcData = DataHandler(vmCalcData);
+
+    //ex = ea
+    //ey = 1/3(2*eb+2c-ea)
+    //yxy = 2/sqrt3 (eb-ec)
+
+    //principal stress equations
+
+    List<StrainData> vonMisesList = new List<StrainData>();
+
+    for (int i = 0; i < vmStrainCalcData.Count; i = i + 3)
+    {
+
+        double e_x = 0.0;
+        double e_y = 0.0;
+        double y_xy = 0.0;
+
+        double e_a = 0.0, e_b = 0.0, e_c = 0.0;
+
+        StrainData vonMisesStrain = new StrainData();
+        vonMisesStrain.name = vmStrainCalcData.ElementAt(i).name;
+        vonMisesStrain.strain = new List<double>();
+        vonMisesStrain.time = vmStrainCalcData.ElementAt(i).time;
+
+        //take reading for a chunk of time and presume the absolute amplitude is the difference?
+
+        
+
+        for (int j = 0; j < vmStrainCalcData.ElementAt(i).strain.Count-1; j++)
+        {
+            e_a = (vmStrainCalcData.ElementAt(i).strain[j]) * Math.Pow(10, -6);
+            e_b = (vmStrainCalcData.ElementAt(i + 1).strain[j]) * Math.Pow(10, -6);
+            e_c = (vmStrainCalcData.ElementAt(i + 2).strain[j]) * Math.Pow(10, -6);
+
+            e_x = e_a;
+            e_y = (2 / 3) * (e_b + e_c - (e_a/2));
+            //y_xy = (2 / Math.Sqrt(3)) * (e_b - e_c);
+
+            //double s_x = e_x * YoungE;
+            //double s_y = e_y * YoungE;
+            //double t_xy = y_xy * ShearMod;
+
+
+            double principal1 = (YoungE/1-PoissonV)*((e_a+e_b+e_c)/3) + ((YoungE / 1 - PoissonV) *(Math.Sqrt(Math.Pow((2*e_a-e_b-e_c)/3,2)+ (1/3)*Math.Pow(e_b-e_c,2))));
+            double principal2 = (YoungE / 1 - PoissonV) * ((e_a + e_b + e_c) / 3) - ((YoungE / 1 - PoissonV) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
+
+            //Hooke's Law
+            //principal1 = (YoungE / 1 - Math.Pow(PoissonV, 2)) * (e_x + (PoissonV * e_y));
+            //principal2 = ((YoungE / 1 - Math.Pow(PoissonV, 2)) * (e_y + (PoissonV * e_x)));
+
+            double vMises = Math.Sqrt((Math.Pow(principal1,2) * Math.Pow(principal1,2)) - (principal1 * principal2));
+            //double vMises = (1 / Math.Sqrt(2)) * Math.Sqrt(Math.Pow((principal1 - principal2), 2) + Math.Pow(principal2, 2) + Math.Pow(principal1, 2));
+
+            vonMisesStrain.strain.Add(vMises);
+        }
+
+        vonMisesList.Add(vonMisesStrain);
+    }
+
+    List<LoadAndCycle> vmStrainCalcLoads = LoadAndCycleCount(vmStrainCalcData);
+
+    Matrix<double> CalcLoads = EquivalentAmplitudeRange(vmStrainCalcLoads);
+
+    int count = 0;
+
+    foreach (StrainData sd in vonMisesList)
+    {
+        double vmCalcAverage = ((CalcLoads[count, 0] + CalcLoads[count + 1, 0] + CalcLoads[count + 2, 0])/3)*Math.Pow(206,3);
+
+        //double e_a = CalcLoads[count, 0];
+        //double e_b = CalcLoads[count+1, 0];
+        //double e_c = CalcLoads[count+2, 0];
+
+        //double principal1 = (YoungE / 1 - PoissonV) * ((e_a + e_b + e_c) / 3) + ((YoungE / 1 - PoissonV) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
+        //double principal2 = (YoungE / 1 - PoissonV) * ((e_a + e_b + e_c) / 3) - ((YoungE / 1 - PoissonV) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
+
+        //double vMises = Math.Sqrt((Math.Pow(principal1, 2) * Math.Pow(principal1, 2)) - (principal1 * principal2));
+
+        Console.WriteLine($"{sd.name} has a maximum calculated von Mises of {(sd.strain.Max()/Math.Pow(10,6)).ToString("0.00")} MPa\t" +
+            $"or\t{(((sd.strain.Max()) / yield_stress) * 100).ToString("0.00")} % of the yield stress" +
+            $"\t{(vmCalcAverage / Math.Pow(10,6)).ToString("0.00")} Mpa" +
+            $" or\t{((vmCalcAverage / yield_stress) * 100).ToString("0.00")} % of the yield stress");
+        count = count + 3;
+
+    }
+    //Compare
+}
+
+List<StressIntensity> deriveStressIntensity(List<LoadAndCycle> Loads)
+{
+    List<StressIntensity> Intensities = new List<StressIntensity>();
+
+    foreach (LoadAndCycle ld in Loads)
+    {
+
+        StressIntensity dataOut = new StressIntensity();
+        dataOut.Intensity_5mm_inf = new List<double>();
+        dataOut.Intensity_10mm_inf = new List<double>();
+        dataOut.Intensity_20mm_inf = new List<double>();
+        dataOut.Intensity_5mm_1M = new List<double>();
+        dataOut.Intensity_10mm_1M = new List<double>();
+        dataOut.Intensity_20mm_1M = new List<double>();
+        dataOut.name = ld.Name;
+
+        //dependant on geometry and crack size
+        double StressIntensityCorrectionFactor = 0.0;
+
+        double StressIntensityThresholdValue = 0.5;
+
+        for (int i = 0; i < ld.CycleRange.Count(); i++)
+        {
+            //BS7910 Table 8.4, values for steel freely corroding in marine environment
+            //R>=0.5 Mean + 2SD for welded joints
+            double m = 3.42;
+            double A = 1.72 * Math.Pow(10, -13);
+
+            double crack = 0.0;
+            double width = 0.0;
+
+            double K_5mm_inf = 0.0;
+            double K_10mm_inf = 0.0;
+            double K_20mm_inf = 0.0;
+
+            double K_5mm_1m = 0.0;
+            double K_10mm_1m = 0.0;
+            double K_20mm_1m = 0.0;
+
+            StressIntensityCorrectionFactor = 1.0; //value for infinitely large plate
+
+            K_5mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 5)), m);
+            K_10mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 10)), m);
+            K_20mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 20)), m);
+
+            dataOut.Intensity_5mm_inf.Add(K_5mm_inf);
+            dataOut.Intensity_10mm_inf.Add(K_10mm_inf);
+            dataOut.Intensity_20mm_inf.Add(K_20mm_inf);
+
+            //For centre cracks
+            crack = 5.0;
+            width = 1000.0;
+            StressIntensityCorrectionFactor = 1 - 0.025 * Math.Pow((crack / width), 2) + 0.06 * Math.Pow((crack / width), 4) / Math.Sqrt(Math.Cos((Math.PI * crack / width * 2)));
+
+            K_5mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 5);
+            K_10mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 10);
+            K_20mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 20);
+
+            dataOut.Intensity_5mm_1M.Add(K_5mm_1m);
+            dataOut.Intensity_10mm_1M.Add(K_10mm_1m);
+            dataOut.Intensity_20mm_1M.Add(K_20mm_1m);
+        }
+
+        Console.WriteLine($"Stress intensity for {dataOut.name} \tat 5mm {dataOut.Intensity_5mm_inf.Max().ToString("0.00")}" +
+                                                                $"\tat 10mm {dataOut.Intensity_10mm_inf.Max().ToString("0.00")}" +
+                                                                $"\tat 20mm {dataOut.Intensity_20mm_inf.Max().ToString("0.00")}" +
+                                                                $"\tat 5mm  {dataOut.Intensity_5mm_1M.Max().ToString("0.00")}" +
+                                                                $"\tat 10mm {dataOut.Intensity_10mm_1M.Max().ToString("0.00")}" +
+                                                                $"\tat 20mm {dataOut.Intensity_20mm_1M.Max().ToString("0.00")}");
+
+        Intensities.Add(dataOut);
+    }
+    return Intensities;
+}
+
+void CriticalStrainCorrelation()
+{
+    //Get the equivalent strain derived from the different strain sensors
+
+
+
+    //Get the derived strain from the Rosette's (one at a time and compare across A,B,C)
+
+    //Determine which sensors provide the greatest accuracy
+}
+
+void StressStrain()
+{
+    //find the best practice to convert between the stress and strain of the system
+
 
 }
 
@@ -958,7 +1561,7 @@ int Main(string[] args)
         return -1;
     }
 
-    Console.WriteLine("Enter a data option, 1 - Sensor to File\r\n 2 - Calculation Validation\r\n 3 - von Mises Calculation for Rosette's");
+    Console.WriteLine("Enter a data option.\r\n\t1 - Sensor to File\r\n\t2 - Calculation Validation\r\n\t3 - von Mises values\r\n\t4 - Stress-Strain Calculation\r\n\t5 - Sensor Correlation");
     string option = Console.ReadLine();
 
     switch (option)
@@ -971,6 +1574,12 @@ int Main(string[] args)
             return 0;
         case "3":
             RosetteVonMises();
+            return 0;
+        case "4":
+            StressStrain();
+            return 0;
+        case "5":
+            CriticalStrainCorrelation();
             return 0;
         default:
             return 0;
@@ -1056,4 +1665,42 @@ public struct StrainData
     public String name;
     public List<long> time;
     public List<double> strain;
+}
+
+public struct StressIntensity
+{
+    public String name;
+    public List<double> Intensity_5mm_inf;
+    public List<double> Intensity_10mm_inf;
+    public List<double> Intensity_20mm_inf;
+    public List<double> Intensity_5mm_1M;
+    public List<double> Intensity_10mm_1M;
+    public List<double> Intensity_20mm_1M;
+}
+
+
+public struct CorrelationData
+{
+    public String name { get; set; }
+    public LoadAndCycle CriticalLoads { get; set; }
+    public Matrix<double> EquivalentRangeMatrix { get; set; }
+    public Matrix<double> LoadVector { get; set; }
+    public StressIntensity stressIntensity { get; set; }
+    public PDdamage Peridynamics { get; set; }
+    public SNcurve SNTotal { get; set; }
+    public StrainData CriticalStrain { get; set; }
+}
+
+public struct PDdamage
+{
+    public String name;
+    public List<int> location;
+    public List<double> damage;
+}
+
+public struct SNcurve
+{
+    public String name;
+    public List<int> location;
+    public List<double> damage;
 }
