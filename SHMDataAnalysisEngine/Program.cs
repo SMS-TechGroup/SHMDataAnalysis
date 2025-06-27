@@ -13,6 +13,7 @@ using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Globalization;
+using System.IO;
 using System.IO.Compression;
 using System.IO.Enumeration;
 using System.Linq;
@@ -137,7 +138,7 @@ void ShowComparison(List<CorrelationData> cData)
         
         double[] results = new double[cData.Count];
 
-        for (int j =0; j < cData[i].EquivalentRangeMatrix.RowCount;j++)
+        for (int j =0; j < mAmplitude.RowCount;j++)
         {
             double result = cData[i].EquivalentRangeMatrix[j,0] * (1 / mAmplitude[j,0]);
             results[j] = result*100;
@@ -1143,6 +1144,60 @@ void DataToFile()
     }
 }
 
+List<StrainData> FileToStrainData(List<string> DataFiles)
+{
+    List<StrainData> StrainDataFiles = new List<StrainData>();
+
+    foreach (string fname in DataFiles)
+    {
+        StrainData sd= new StrainData();
+        sd.time = new List<long>();
+        sd.strain = new List<double>();
+
+        StreamReader sr = new StreamReader(fname + "\\" + fname.Substring(fname.LastIndexOf("\\")+1)+".txt");
+        sd.name = sr.ReadLine();
+
+        string line;
+
+        while((line = sr.ReadLine())!= null)
+        {
+            sd.time.Add(long.Parse(line.Split(",")[0]));
+            sd.strain.Add(double.Parse(line.Split(",")[1]));
+        }
+
+        StrainDataFiles.Add(sd);
+    }
+
+
+    return StrainDataFiles;
+}
+
+StrainData AverageLocationStrain(List<StrainData> locData, int location)
+{
+    StrainData avgData = new StrainData();
+
+    avgData.name = locData.ElementAt(0).name.Substring(0, 2);
+
+    List<double> avgStrain = new List<double>();
+    List<double> locStrain = new List<double>();
+
+    for (int i =0; i<locData.Count; i++)
+    {
+        foreach (double strain in locData[i].strain)
+        {
+            locStrain.Add(strain);
+            avgStrain.Add(locStrain.Average());
+            locStrain.Clear();
+        }
+        
+    }
+
+    avgData.strain=avgStrain;
+    avgData.time = locData.ElementAt(0).time;
+
+    return avgData;
+}
+
 List<StrainData> AverageLocationData (List<StrainData> tmpData)
 {
     List<StrainData> avgData = new List<StrainData>();
@@ -1412,8 +1467,8 @@ void RosetteVonMises()
             //double t_xy = y_xy * ShearMod;
 
 
-            double principal1 = (YoungE/1-PoissonV)*((e_a+e_b+e_c)/3) + ((YoungE / 1 - PoissonV) *(Math.Sqrt(Math.Pow((2*e_a-e_b-e_c)/3,2)+ (1/3)*Math.Pow(e_b-e_c,2))));
-            double principal2 = (YoungE / 1 - PoissonV) * ((e_a + e_b + e_c) / 3) - ((YoungE / 1 - PoissonV) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
+            double principal1 = (YoungE/(1-PoissonV))*((e_a+e_b+e_c)/3) + ((YoungE / (1 - PoissonV)) *(Math.Sqrt(Math.Pow((2*e_a-e_b-e_c)/3,2)+ (1/3)*Math.Pow(e_b-e_c,2))));
+            double principal2 = (YoungE / (1 - PoissonV)) * ((e_a + e_b + e_c) / 3) - ((YoungE / (1 - PoissonV)) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
 
             //Hooke's Law
             //principal1 = (YoungE / 1 - Math.Pow(PoissonV, 2)) * (e_x + (PoissonV * e_y));
@@ -1436,21 +1491,29 @@ void RosetteVonMises()
 
     foreach (StrainData sd in vonMisesList)
     {
-        double vmCalcAverage = ((CalcLoads[count, 0] + CalcLoads[count + 1, 0] + CalcLoads[count + 2, 0])/3)*Math.Pow(206,3);
+        //double vmCalcAverage = ((CalcLoads[count, 0] + CalcLoads[count + 1, 0] + CalcLoads[count + 2, 0])/3);
 
-        //double e_a = CalcLoads[count, 0];
-        //double e_b = CalcLoads[count+1, 0];
-        //double e_c = CalcLoads[count+2, 0];
+        double e_a = vmStrainCalcLoads.ElementAt(count  ).CycleRange.Average() * Math.Pow(10,-6);
+        double e_b = vmStrainCalcLoads.ElementAt(count+1).CycleRange.Average() * Math.Pow(10, -6);
+        double e_c = vmStrainCalcLoads.ElementAt(count+2).CycleRange.Average() * Math.Pow(10, -6);
 
-        //double principal1 = (YoungE / 1 - PoissonV) * ((e_a + e_b + e_c) / 3) + ((YoungE / 1 - PoissonV) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
-        //double principal2 = (YoungE / 1 - PoissonV) * ((e_a + e_b + e_c) / 3) - ((YoungE / 1 - PoissonV) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
+        double principal1 = (YoungE / (1 - PoissonV)) * ((e_a + e_b + e_c) / 3) + ((YoungE / (1 - PoissonV)) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
+        double principal2 = (YoungE / (1 - PoissonV)) * ((e_a + e_b + e_c) / 3) - ((YoungE / (1 - PoissonV)) * (Math.Sqrt(Math.Pow((2 * e_a - e_b - e_c) / 3, 2) + (1 / 3) * Math.Pow(e_b - e_c, 2))));
 
         //double vMises = Math.Sqrt((Math.Pow(principal1, 2) * Math.Pow(principal1, 2)) - (principal1 * principal2));
 
+        double e_x = e_a;
+        double e_y = (2 / 3) * (e_b + e_c - (e_a / 2));
+
+        principal1 = (YoungE / (1 - Math.Pow(PoissonV, 2))) * (e_x + (PoissonV * e_y));
+        principal2 = ((YoungE / (1 - Math.Pow(PoissonV, 2))) * (e_y + (PoissonV * e_x)));
+
+        double vMises = Math.Sqrt((Math.Pow(principal1, 2) * Math.Pow(principal1, 2)) - (principal1 * principal2));
+
         Console.WriteLine($"{sd.name} has a maximum calculated von Mises of {(sd.strain.Max()/Math.Pow(10,6)).ToString("0.00")} MPa\t" +
             $"or\t{(((sd.strain.Max()) / yield_stress) * 100).ToString("0.00")} % of the yield stress" +
-            $"\t{(vmCalcAverage / Math.Pow(10,6)).ToString("0.00")} Mpa" +
-            $" or\t{((vmCalcAverage / yield_stress) * 100).ToString("0.00")} % of the yield stress");
+            $"\t{(vMises / Math.Pow(10,6)).ToString("0.00")} Mpa" +
+            $" or\t{((vMises / yield_stress) * 100).ToString("0.00")} % of the yield stress");
         count = count + 3;
 
     }
@@ -1460,6 +1523,8 @@ void RosetteVonMises()
 List<StressIntensity> deriveStressIntensity(List<LoadAndCycle> Loads)
 {
     List<StressIntensity> Intensities = new List<StressIntensity>();
+
+    Console.WriteLine("Critical Intensity for Mild Steel Kc 140 MPa.mm^1/2");
 
     foreach (LoadAndCycle ld in Loads)
     {
@@ -1498,9 +1563,9 @@ List<StressIntensity> deriveStressIntensity(List<LoadAndCycle> Loads)
 
             StressIntensityCorrectionFactor = 1.0; //value for infinitely large plate
 
-            K_5mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 5)), m);
-            K_10mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 10)), m);
-            K_20mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 20)), m);
+            K_5mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 5)), m);
+            K_10mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 10)), m);
+            K_20mm_inf = A * Math.Pow((StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 20)), m);
 
             dataOut.Intensity_5mm_inf.Add(K_5mm_inf);
             dataOut.Intensity_10mm_inf.Add(K_10mm_inf);
@@ -1511,21 +1576,21 @@ List<StressIntensity> deriveStressIntensity(List<LoadAndCycle> Loads)
             width = 1000.0;
             StressIntensityCorrectionFactor = 1 - 0.025 * Math.Pow((crack / width), 2) + 0.06 * Math.Pow((crack / width), 4) / Math.Sqrt(Math.Cos((Math.PI * crack / width * 2)));
 
-            K_5mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 5);
-            K_10mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 10);
-            K_20mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * Math.Pow(206, 3)) * Math.Sqrt(Math.PI / 20);
+            K_5mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 5);
+            K_10mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 10);
+            K_20mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 20);
 
             dataOut.Intensity_5mm_1M.Add(K_5mm_1m);
             dataOut.Intensity_10mm_1M.Add(K_10mm_1m);
             dataOut.Intensity_20mm_1M.Add(K_20mm_1m);
         }
 
-        Console.WriteLine($"Stress intensity for {dataOut.name} \tat 5mm {dataOut.Intensity_5mm_inf.Max().ToString("0.00")}" +
-                                                                $"\tat 10mm {dataOut.Intensity_10mm_inf.Max().ToString("0.00")}" +
-                                                                $"\tat 20mm {dataOut.Intensity_20mm_inf.Max().ToString("0.00")}" +
-                                                                $"\tat 5mm  {dataOut.Intensity_5mm_1M.Max().ToString("0.00")}" +
-                                                                $"\tat 10mm {dataOut.Intensity_10mm_1M.Max().ToString("0.00")}" +
-                                                                $"\tat 20mm {dataOut.Intensity_20mm_1M.Max().ToString("0.00")}");
+        Console.WriteLine($"{dataOut.name} K \tat 5mm {(dataOut.Intensity_5mm_inf.Max()/1e6).ToString("0.00")} MPa" +
+                                                                $"\tat 10mm {(dataOut.Intensity_10mm_inf.Max()/1e6).ToString("0.00")}" +
+                                                                $"\tat 20mm {(dataOut.Intensity_20mm_inf.Max() / 1e6).ToString("0.00")}" +
+                                                                $"\tat 5mm  {(dataOut.Intensity_5mm_1M.Max()/ 1e6).ToString("0.00")}" +
+                                                                $"\tat 10mm {(dataOut.Intensity_10mm_1M.Max() / 1e6).ToString("0.00")}" +
+                                                                $"\tat 20mm {(dataOut.Intensity_20mm_1M.Max() / 1e6).ToString("0.00")}");
 
         Intensities.Add(dataOut);
     }
@@ -1536,7 +1601,128 @@ void CriticalStrainCorrelation()
 {
     //Get the equivalent strain derived from the different strain sensors
 
+    //This will use the downloaded data to compare against the Rosette data.
 
+    //This comparison is only valid for Details 19-3, 19-4, 19-5
+
+    string FolderPath = "D:\\SHM_Data";
+    string[] DataFile = Directory.EnumerateDirectories(FolderPath).ToArray();
+
+
+    List<StrainData> AverageData = new List<StrainData>();
+    List<StrainData> CorrelationAverageData = new List<StrainData>();
+    List<StrainData> LocationDatas = new List<StrainData>();
+
+    List<string> LocationFiles = new List<string>();
+    int[] locationNums = new int[6];
+
+    int i = 0;
+
+    while (i< DataFile.Count())
+    {
+        //average strains for location, create strain data list
+        if (DataFile[i].Contains("R"))
+        {
+            int location = Int32.Parse(DataFile[i].Substring(DataFile[i].IndexOf("R") + 1, 1));
+            locationNums.Append(location);
+
+            LocationFiles.Clear();
+
+            //We need to get the range where the location data ends.
+            foreach (string file in DataFile)
+            {
+                if (file.Contains("R" + location.ToString()))
+                {
+                    LocationFiles.Add(file);
+                }
+            }
+
+            i = i + LocationFiles.Count();
+
+            List<StrainData> locStrains = FileToStrainData(LocationFiles);
+
+            LocationFiles.Clear();
+
+            StrainData dataOut = AverageLocationStrain(locStrains, location);
+            CorrelationAverageData.Add(dataOut);
+
+        } else if (DataFile[i].Contains("SG"))
+        {
+            int location = Int32.Parse(DataFile[i].Substring(DataFile[i].IndexOf("L")+1,1));
+            locationNums.Append(location);
+
+            LocationFiles.Clear();
+
+            //We need to get the range where the location data ends.
+            foreach (string file in DataFile)
+            {
+                if (file.Contains("L"+location.ToString()))
+                {
+                    LocationFiles.Add(file);
+                }                
+            }
+
+            i = i + LocationFiles.Count();
+
+            List<StrainData> locStrains = FileToStrainData(LocationFiles);
+
+            LocationFiles.Clear();
+
+            StrainData dataOut = AverageLocationStrain(locStrains, location);
+            AverageData.Add(dataOut);
+
+        }
+    }
+
+    List <Matrix<double>> modeShapeList = new List<Matrix<double>>();
+
+    for (i =0;i< AverageData[0].strain.Count();i++)
+    {
+        Matrix<double> strainMatrix = DenseMatrix.OfArray(new double[,]
+                                                           {{AverageData[0].strain[i]},
+                                                            {AverageData[1].strain[i]},
+                                                            {AverageData[2].strain[i]},
+                                                            {AverageData[3].strain[i]},
+                                                            {AverageData[4].strain[i]},
+                                                            {AverageData[5].strain[i]}});
+
+        Matrix<double> modeShape = govModeShape.TransposeThisAndMultiply(govModeShape).Inverse() * (govModeShape.Transpose() * strainMatrix);
+
+        modeShapeList.Add(modeShape);
+    }
+
+    StrainData cd193 = new StrainData();
+    cd193.name = "Detail 19-3";
+    cd193.strain = new List<double>();
+    StrainData cd194 = new StrainData();
+    cd194.name = "Detail 19-4";
+    cd194.strain = new List<double>();
+    StrainData cd195 = new StrainData();
+    cd195.name = "Detail 19-5";
+    cd195.strain = new List<double>();
+
+
+    for (i=0;i<modeShapeList.Count;i++)
+    {
+        //detail 193
+        MathNet.Numerics.LinearAlgebra.Vector<double> details = locMatrix.Row(3) * modeShapeList.ElementAt(i);
+        cd193.strain.Add(details[0]);
+        //detail 194
+        details = locMatrix.Row(4) * modeShapeList.ElementAt(i);
+        cd194.strain.Add(details[0]);
+        //detail 195
+        details = locMatrix.Row(5) * modeShapeList.ElementAt(i);
+        cd195.strain.Add(details[0]);
+    }
+
+    for(i=0;i<cd193.strain.Count;i++)
+    {
+        Console.WriteLine($"19-3 R {AverageData.ElementAt(0).strain[i].ToString("0.00")} C {cd193.strain[i].ToString("0.00")} Diff {Math.Abs(cd193.strain[i]-AverageData.ElementAt(0).strain[i]).ToString("0.0")}" +
+                        $"\t19-4 R {AverageData.ElementAt(1).strain[i].ToString("0.00")} C {cd194.strain[i].ToString("0.00")} Diff {Math.Abs(cd194.strain[i]-AverageData.ElementAt(1).strain[i]).ToString("0.0")}" +
+                        $"\t19-5 R {AverageData.ElementAt(2).strain[i].ToString("0.00")} C {cd195.strain[i].ToString("0.00")} Diff {Math.Abs(cd195.strain[i]-AverageData.ElementAt(2).strain[i]).ToString("0.0")}");
+    }
+
+    Console.WriteLine($"Average Data Count {AverageData.Count} Correlation count {CorrelationAverageData.Count}");
 
     //Get the derived strain from the Rosette's (one at a time and compare across A,B,C)
 
@@ -1546,7 +1732,34 @@ void CriticalStrainCorrelation()
 void StressStrain()
 {
     //find the best practice to convert between the stress and strain of the system
+    sensorsTB = "L2-SG-1,L2-SG-2,L2-SG-3,L2-SG-4,L2-SG-5,L2-LG,L2-DG";
+    List<dataPoint> dataOut = GetStrainData().Result;
+    Task.WaitAll();
 
+    List<StrainData> sData = DataHandler(dataOut);
+
+    for (int i =0;i<sData.Count;i++)
+    {
+        double YoungE = 206E9;
+        double Yield = 205; //value in MPa
+
+        for (int j = 0; j < 300; j=j+100)
+        {
+            double sAmp = Math.Abs(sData[i].strain[j] - sData[i].strain[j+1]);
+            double strain = Math.Abs(sData[i].strain[j]);
+
+            double stress = ((strain * 1e-6 * YoungE) / 1e6);
+            double strAmp = (sAmp * 1e-6 * YoungE) / 1e6;
+
+            Console.WriteLine($"{sData[i].name} for strain {strain.ToString("0.00")} " +
+                $"\tstress {(stress).ToString("0.00")} MPa {((stress/ Yield) * 100).ToString("0.0")} yield% " +
+                $"\tampstress {(strAmp).ToString("0.00")} MPa {((strAmp / Yield) * 100).ToString("0.0")} yield%");
+
+        }
+
+        Console.WriteLine();
+        
+    }
 
 }
 
@@ -1557,8 +1770,13 @@ int Main(string[] args)
 
     if (!Directory.Exists(datafolder))
     {
-        Console.WriteLine(datafolder + " is not a valid folder");
-        return -1;
+        try
+        {
+            Directory.CreateDirectory(datafolder);
+            //Console.WriteLine(datafolder + " is not a valid folder");
+        } catch (System.Exception ex) {
+            Console.WriteLine($"Folder create error {datafolder} "+ex.ToString());
+        }
     }
 
     Console.WriteLine("Enter a data option.\r\n\t1 - Sensor to File\r\n\t2 - Calculation Validation\r\n\t3 - von Mises values\r\n\t4 - Stress-Strain Calculation\r\n\t5 - Sensor Correlation");
