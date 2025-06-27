@@ -933,10 +933,29 @@ Matrix<double> EquivalentAmplitudeRange(List<LoadAndCycle> Loads)
 {
     //determine the equivalent amplitude range
 
+    List<List<double>> eqAmpList = new List<List<double>>();
     List<double> eqAmpRange = new List<double>();
     int count = 0;
 
     Matrix<double> eqAmpMatrix = Matrix<double>.Build.Dense(Loads.Count,1);
+    List<double> tmpList = new List<double>();
+
+    for (int j = 0; j < Loads[0].CycleRange.Count;j++)
+    {
+        for (int i = 0; i < Loads.Count;i++)
+        {
+            double equiv = ((i + 1.0) / Loads.Count());
+            double pow = (Math.Pow(Loads.ElementAt(i).CycleRange[j], 5));
+            tmpList.Add(equiv*pow);
+            
+        }
+        eqAmpRange.Add(Math.Pow(tmpList.Sum(), 0.2));
+        tmpList.Clear();
+        eqAmpList.Add(eqAmpRange);
+        Console.WriteLine("Sum of loads" +eqAmpList.ElementAt(j).ElementAt(0));
+        eqAmpRange.Clear();
+    }
+
 
     foreach (LoadAndCycle ld in Loads)
     {
