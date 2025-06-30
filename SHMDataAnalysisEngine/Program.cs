@@ -187,6 +187,7 @@ List<CorrelationData> CorrelationRainflow(List<StrainData> strainList)
 
     List<LoadAndCycle> LocationLoads = LoadAndCycleCount(LocationData);
 
+
     Thread.Sleep(50);
 
     foreach (LoadAndCycle ld in LocationLoads)
@@ -709,7 +710,7 @@ List<CorrelationData> RainflowAndAmplitudes(List<StrainData> strainList)
         }
 
 
-        //Rearrange critical data into strains by location - formatting will help.
+    //Rearrange critical data into strains by location - formatting will help.
 
 
 
@@ -726,6 +727,8 @@ List<CorrelationData> RainflowAndAmplitudes(List<StrainData> strainList)
 
             criticalLocation.Add(strainData);
         }
+
+    List<Matrix<double>> criticalModeShape = new List<Matrix<double>>();
 
     for (int i = 0; i < modeShapeMatrix.Count; i++)
     {
@@ -847,6 +850,10 @@ List<CorrelationData> RainflowAndAmplitudes(List<StrainData> strainList)
         count++;
     }
 
+    Matrix<double> PeriAmplitudeVector = Matrix<double>.Build.Dense(3, 1);
+
+    PeriAmplitudeVector = PDEquivalentAmplitudeRange(modeShapeMatrix, CriticalLocationLoads);
+
 
     //Matrix<double> eqAmpMatrix = EquivalentAmplitudeRange(LocationLoads);
     Matrix<double> eqAmpMatrixCritical = EquivalentAmplitudeRange(CriticalLocationLoads);
@@ -861,17 +868,17 @@ List<CorrelationData> RainflowAndAmplitudes(List<StrainData> strainList)
     //if (!(strainList.ElementAt(0).name.Contains("R1") || strainList.ElementAt(0).name.Contains("R2") || strainList.ElementAt(0).name.Contains("R3")))
     //{
     //Matrix<double> LoadVector = eqAmpModeShape(eqAmpMatrix);
-    Matrix<double> CriticalLoadVector = eqAmpModeShape(eqAmpMatrixCritical);
+    /*Matrix<double> CriticalLoadVector = eqAmpModeShape(eqAmpMatrixCritical);
 
     for (int i = 0; i < correlationDatas.Count; i++)
     {
         corData = correlationDatas[i];
         corData.LoadVector = CriticalLoadVector;
         correlationDatas[i] = corData;
-    }
+    }*/
 
     //Console.WriteLine("Load Vector "+LoadVector);
-    Console.WriteLine("Critical Vector " +CriticalLoadVector);
+    //Console.WriteLine("Critical Vector " +CriticalLoadVector);
 
         /*List<LoadAndCycle> LoadRangeList = new List<LoadAndCycle>();
 
@@ -891,7 +898,7 @@ List<CorrelationData> RainflowAndAmplitudes(List<StrainData> strainList)
     for (int j = 0; j < periMatrix.ColumnCount; j++)
     {
         //PeriDynamics(LoadVector, LocationLoads.ElementAt(j), j, timeData);
-        var (location, damage) = PeriDynamics(CriticalLoadVector, CriticalLocationLoads.ElementAt(j), j, timeData);
+        var (location, damage) = PeriDynamics(PeriAmplitudeVector, CriticalLocationLoads.ElementAt(j), j, timeData);
         pd.location.Add(location);
         pd.damage.Add(damage);
     }
@@ -929,6 +936,32 @@ List<CorrelationData> RainflowAndAmplitudes(List<StrainData> strainList)
     return correlationDatas;
 }
 
+Matrix<double> PDEquivalentAmplitudeRange(List<Matrix<double>> modeShape, List<LoadAndCycle> criticalLoads)
+{
+    Matrix<double> LoadVector = Matrix<double>.Build.Dense(3, 1);
+
+    //double N = modeShape.Count();
+
+    double N = criticalLoads.ElementAt(0).CycleCount;
+
+    List<double> VerVector = new List<double>();
+    List<double> HorVector = new List<double>();
+    List<double> TorVector = new List<double>();    
+
+    for (int i =0; i < N; i++)
+    {
+        VerVector.Add((i / N) * (Math.Pow(modeShape.ElementAt(0)[0, 0],5)));
+        HorVector.Add((i / N) * (Math.Pow(modeShape.ElementAt(1)[1, 0], 5)));
+        TorVector.Add((i / N) * (Math.Pow(modeShape.ElementAt(2)[2, 0], 5)));
+    }
+
+    LoadVector[0, 0] = Math.Pow(Math.Abs(VerVector.Sum()), 0.2);
+    LoadVector[1, 0] = Math.Pow(Math.Abs(HorVector.Sum()), 0.2);
+    LoadVector[2, 0] = Math.Pow(Math.Abs(TorVector.Sum()), 0.2);
+
+    return LoadVector;
+}
+
 Matrix<double> EquivalentAmplitudeRange(List<LoadAndCycle> Loads)
 {
     //determine the equivalent amplitude range
@@ -952,7 +985,7 @@ Matrix<double> EquivalentAmplitudeRange(List<LoadAndCycle> Loads)
         eqAmpRange.Add(Math.Pow(tmpList.Sum(), 0.2));
         tmpList.Clear();
         eqAmpList.Add(eqAmpRange);
-        Console.WriteLine("Sum of loads" +eqAmpList.ElementAt(j).ElementAt(0));
+        //Console.WriteLine("Sum of loads" +eqAmpList.ElementAt(j).ElementAt(0));
         eqAmpRange.Clear();
     }
 
@@ -967,7 +1000,7 @@ Matrix<double> EquivalentAmplitudeRange(List<LoadAndCycle> Loads)
             //Console.WriteLine(eqAmpRange.ElementAt(i));
         }
 
-        Console.WriteLine("Equivalent Amplitude Range"+ld.Name + " \t" + (Math.Pow(eqAmpRange.Sum(),0.2)).ToString("E"));
+        Console.WriteLine("Equivalent Amplitude Range"+ld.Name + " \t" + (Math.Pow(eqAmpRange.Sum(),0.2)).ToString("0.00"));
 
         eqAmpMatrix[count, 0] = Math.Pow(eqAmpRange.Sum(),0.2);
         count++;
@@ -1070,6 +1103,10 @@ List<StrainData> DataHandler(List<dataPoint> datapoints)
 
         sd.name = datapoints[i].name;
 
+        double correctionFactor = 1.0;
+
+        if (datapoints[i].name.Contains("DG")) { correctionFactor = 1000.0; }
+
         if (nameArray.Contains(sd.name)) { Console.WriteLine("data already counted"); continue; }
 
         for (int z = i;z< datapoints.Count();z++)
@@ -1079,7 +1116,7 @@ List<StrainData> DataHandler(List<dataPoint> datapoints)
 
                     foreach (infPoint inf in datapoints[z].points)
                     {
-                        sd.strain.Add(inf.value);
+                        sd.strain.Add(inf.value * correctionFactor);
                         sd.time.Add(inf.date);
                     }
 
@@ -1596,7 +1633,13 @@ List<StressIntensity> deriveStressIntensity(List<LoadAndCycle> Loads)
             StressIntensityCorrectionFactor = 1 - 0.025 * Math.Pow((crack / width), 2) + 0.06 * Math.Pow((crack / width), 4) / Math.Sqrt(Math.Cos((Math.PI * crack / width * 2)));
 
             K_5mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 5);
+
+            crack = 10;
+            StressIntensityCorrectionFactor = 1 - 0.025 * Math.Pow((crack / width), 2) + 0.06 * Math.Pow((crack / width), 4) / Math.Sqrt(Math.Cos((Math.PI * crack / width * 2)));
             K_10mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 10);
+
+            crack = 20;
+            StressIntensityCorrectionFactor = 1 - 0.025 * Math.Pow((crack / width), 2) + 0.06 * Math.Pow((crack / width), 4) / Math.Sqrt(Math.Cos((Math.PI * crack / width * 2)));
             K_20mm_1m = StressIntensityCorrectionFactor * (ld.CycleRange[i] * 206e3) * Math.Sqrt(Math.PI / 20);
 
             dataOut.Intensity_5mm_1M.Add(K_5mm_1m);
@@ -1604,12 +1647,16 @@ List<StressIntensity> deriveStressIntensity(List<LoadAndCycle> Loads)
             dataOut.Intensity_20mm_1M.Add(K_20mm_1m);
         }
 
-        Console.WriteLine($"{dataOut.name} K \tat 5mm {(dataOut.Intensity_5mm_inf.Max()/1e6).ToString("0.00")} MPa" +
+        //Critical Crack Length - the point at which brittle fracture can occur - taken for the maxmium amplitude.
+        double a_crit = (1.0 / Math.PI) * Math.Pow((140 / (StressIntensityCorrectionFactor * (ld.CycleRange.Max() * 206e3))), 2);
+
+        Console.WriteLine($"{dataOut.name} K ∞ plate\tat 5mm {(dataOut.Intensity_5mm_inf.Max()/1e6).ToString("0.00")} MPa" +
                                                                 $"\tat 10mm {(dataOut.Intensity_10mm_inf.Max()/1e6).ToString("0.00")}" +
                                                                 $"\tat 20mm {(dataOut.Intensity_20mm_inf.Max() / 1e6).ToString("0.00")}" +
-                                                                $"\tat 5mm  {(dataOut.Intensity_5mm_1M.Max()/ 1e6).ToString("0.00")}" +
+                                                                $"\t1m plate\tat 5mm  {(dataOut.Intensity_5mm_1M.Max()/ 1e6).ToString("0.00")}" +
                                                                 $"\tat 10mm {(dataOut.Intensity_10mm_1M.Max() / 1e6).ToString("0.00")}" +
-                                                                $"\tat 20mm {(dataOut.Intensity_20mm_1M.Max() / 1e6).ToString("0.00")}");
+                                                                $"\tat 20mm {(dataOut.Intensity_20mm_1M.Max() / 1e6).ToString("0.00")}" +
+                                                                $"Critical Crack Length {a_crit.ToString("0.0000")} mm");
 
         Intensities.Add(dataOut);
     }
